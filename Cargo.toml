@@ -1,0 +1,26 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/desktop/src-tauri",
+    "apps/cli",
+    "crates/holster-vault",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Dave Nauta <dave@nautaai.com>"]
+license = "Source-Available"
+repository = "private"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+thiserror = "1.0"
+anyhow = "1.0"
+tracing = "0.1"
+zeroize = { version = "1.7", features = ["derive"] }
+secrecy = { version = "0.8", features = ["serde"] }

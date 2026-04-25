@@ -1,0 +1,13 @@
+[package]
+name = "holster-desktop"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+holster-vault = { path = "../../../crates/holster-vault" }
+
+[lib]
+name = "holster_desktop"
+path = "src/lib.rs"

@@ -1,0 +1,14 @@
+[package]
+name = "holster-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+holster-vault = { path = "../../crates/holster-vault" }
+anyhow = { workspace = true }
+
+[[bin]]
+name = "holster"
+path = "src/main.rs"
