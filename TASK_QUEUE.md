@@ -2,19 +2,24 @@
 
 ## Done
 
-- [x] T1.0 — Repo scaffolding (this commit)
+- [x] T1.0 — Repo scaffolding
+- [x] T1.1 — `holster-vault` crate skeleton (Cargo.toml + lib.rs + module stubs)
 
 ## Up next (in order)
 
-- [ ] T1.1 — Vault file format spec → see `docs/framework/06_MILESTONE_1_TASKS.md`
-- [ ] T1.2 — Crypto primitives (XChaCha20-Poly1305 + Argon2id)
-- [ ] T1.3 — Vault open/save round-trip
-- [ ] T1.4 — Key entry CRUD
-- [ ] T1.5 — CLI surface (open, list, get, set)
-- [ ] T1.6 — Integration tests with fake keys
-- [ ] T1.7 — Tauri shell (empty menu bar app, no auth yet)
-- [ ] T1.8 — End-to-end smoke: CLI writes vault, Tauri reads it
+- [ ] T1.2 — Error types (`error.rs` — replace stub with thiserror enum)
+- [ ] T1.3 — Crypto module (Argon2id + AES-GCM, security-critical)
+- [ ] T1.4 — Models (Provider, KeyStatus, KeyMetadata, AddKeyInput w/ redacted Debug)
+- [ ] T1.5 — DB module (SQLCipher schema + migrations + parameterized CRUD)
+- [ ] T1.6 — Session module (SessionToken UUID newtype, idle timeout)
+- [ ] T1.7 — Vault facade (public API tying crypto + db + session)
+- [ ] T1.8 — Test harness CLI (apps/cli)
+- [ ] T1.9 — CC review pass
 
 ## Operating rules
 
-Before starting T1.1, **read** `OPERATING_NOTES.md` end to end.
+Read `OPERATING_NOTES.md` and `docs/framework/06_MILESTONE_1_TASKS.md`
+before starting any task. Each task has an explicit acceptance check —
+do not move on until it passes verifiably.
+
+Henry runbook: `~/obsidian-vault/Nauta-AI/Projects/Holster/14_HENRY_RUNBOOK.md`
