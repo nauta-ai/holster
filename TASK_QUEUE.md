@@ -5,10 +5,10 @@
 - [x] T1.0 — Repo scaffolding
 - [x] T1.1 — `holster-vault` crate skeleton (Cargo.toml + lib.rs + module stubs)
 - [x] T1.2 — Error types (thiserror enum, no plaintext leakage)
+- [x] T1.3 — Crypto (Argon2id + AES-256-GCM, 6 tests passing, security-critical)
 
 ## Up next (in order)
 
-- [ ] T1.3 — Crypto module (Argon2id + AES-GCM, security-critical)
 - [ ] T1.4 — Models (Provider, KeyStatus, KeyMetadata, AddKeyInput w/ redacted Debug)
 - [ ] T1.5 — DB module (SQLCipher schema + migrations + parameterized CRUD)
 - [ ] T1.6 — Session module (SessionToken UUID newtype, idle timeout)
