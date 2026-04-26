@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Holster",
+  "version": "0.1.0",
+  "identifier": "com.nautaai.holster",
+  "build": {
+    "beforeDevCommand": "pnpm --filter holster-desktop-ui dev",
+    "beforeBuildCommand": "pnpm --filter holster-desktop-ui build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Holster",
+        "width": 880,
+        "height": 640,
+        "minWidth": 640,
+        "minHeight": 480,
+        "resizable": true,
+        "fullscreen": false,
+        "titleBarStyle": "Visible"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns"
+    ],
+    "category": "Utility",
+    "shortDescription": "Local-first API key vault",
+    "longDescription": "Encrypted local vault for storing API keys. AES-256-GCM + SQLCipher + Argon2id."
+  }
+}

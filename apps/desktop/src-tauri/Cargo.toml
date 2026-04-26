@@ -4,10 +4,33 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+description = "Holster — local-first API key vault (Tauri desktop app)"
+
+[lib]
+name = "holster_desktop_lib"
+path = "src/lib.rs"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "holster-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
 holster-vault = { path = "../../../crates/holster-vault" }
+tauri = { version = "2", features = [] }
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-dialog = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+secrecy = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
 
-[lib]
-name = "holster_desktop"
-path = "src/lib.rs"
+[features]
+# default Tauri features (devtools in dev builds, custom-protocol in release)
+custom-protocol = ["tauri/custom-protocol"]
