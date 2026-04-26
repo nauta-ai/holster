@@ -16,6 +16,6 @@ pub mod session;
 pub mod vault;
 
 pub use error::VaultError;
-pub use models::{KeyMetadata, KeyStatus, Provider};
+pub use models::{AddKeyInput, KeyMetadata, KeyStatus, Provider};
 pub use session::SessionToken;
 pub use vault::Vault;

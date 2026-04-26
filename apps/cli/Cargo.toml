@@ -8,7 +8,7 @@ license.workspace = true
 [dependencies]
 holster-vault = { path = "../../crates/holster-vault" }
 anyhow = { workspace = true }
-
-[[bin]]
-name = "holster"
-path = "src/main.rs"
+clap = { version = "4.5", features = ["derive"] }
+rpassword = "7.3"
+secrecy = { workspace = true }
+uuid = { workspace = true }
