@@ -105,35 +105,37 @@ impl Vault {
         })
     }
 
-    /// Unlock the vault with the master password. Derives keys, opens the
-    /// SQLCipher connection (if not already), and returns a fresh session
+    /// Unlock the vault with the master password. Derives keys, opens (or
+    /// re-opens) the SQLCipher connection, and returns a fresh session
     /// token. Wrong password → VaultError::BadPassword.
+    ///
+    /// Implementation note (V-1 fix): every `unlock` opens a *fresh* SQLCipher
+    /// connection with the freshly-derived key and runs a sentinel query
+    /// against it. On success, the new connection replaces any prior slot
+    /// contents. On failure, `BadPassword` is returned and the prior slot
+    /// is preserved untouched. This guarantees wrong-password is detected
+    /// at unlock time even when an earlier unlock left a connection open.
+    /// The cost is one extra Argon2 + SQLCipher open per re-unlock —
+    /// acceptable for an interactive flow.
     pub fn unlock(&self, password: &str) -> Result<SessionToken, VaultError> {
         let salt = read_salt_sidecar(&self.db_path)?;
         let keys = derive_keys(password, &salt)?;
 
-        // Open the db (or reuse existing). If wrong password, the SQLCipher
-        // PRAGMA key won't decrypt and the first query will fail.
+        // Always open a fresh connection so the password is validated by
+        // SQLCipher itself. Do this *before* taking the db_slot lock so
+        // a slow Argon2/open doesn't block other readers, and so a wrong
+        // password leaves the existing connection intact.
+        let new_db = Database::open(&self.db_path, keys.sqlcipher_key.expose_secret())?;
+        // Sentinel query — fails (decrypt error) if the PRAGMA key was wrong.
+        new_db.get_salt().map_err(|_| VaultError::BadPassword)?;
+
         let mut db_slot = self
             .db
             .lock()
             .map_err(|_| VaultError::Crypto("vault db mutex poisoned".into()))?;
-
-        let needs_open = db_slot.is_none();
-
-        if needs_open {
-            let db = Database::open(&self.db_path, keys.sqlcipher_key.expose_secret())?;
-            // Verify password by attempting a sentinel query
-            db.get_salt().map_err(|_| VaultError::BadPassword)?;
-            *db_slot = Some(db);
-        } else if let Some(db) = db_slot.as_ref() {
-            // Re-unlock with possibly-different password. Verify the new keys
-            // against stored salt. If they match (same password), we accept.
-            let stored = db.get_salt().map_err(|_| VaultError::BadPassword)?;
-            if stored != salt {
-                return Err(VaultError::BadPassword);
-            }
-        }
+        // Replace any prior connection. Dropping the old `Database` closes
+        // its connection cleanly; the new one is now the canonical handle.
+        *db_slot = Some(new_db);
         drop(db_slot);
 
         // Create a session bound to the AES key derived above
@@ -334,6 +336,31 @@ mod tests {
         let err = vault.unlock(WRONG_PWD).unwrap_err();
         // SQLCipher returns a Db error when key doesn't decrypt — surface as such
         assert!(matches!(err, VaultError::Db(_) | VaultError::BadPassword));
+    }
+
+    /// Regression test for V-1 (security review, 2026-04-26):
+    /// a wrong-password unlock attempted *after* a prior successful unlock+lock
+    /// (i.e., when the SQLCipher connection slot may already be populated)
+    /// must still return BadPassword/Db and must NOT issue a session token.
+    #[test]
+    fn unlock_wrong_password_fails_after_prior_lock() {
+        let (_dir, vault) = fresh_vault();
+
+        // Phase 1: legitimate unlock + lock to populate any cached state.
+        let token1 = vault.unlock(PWD).unwrap();
+        vault.lock(token1).unwrap();
+
+        // Phase 2: wrong password must be rejected, not silently issue a token.
+        let err = vault.unlock(WRONG_PWD).unwrap_err();
+        assert!(
+            matches!(err, VaultError::Db(_) | VaultError::BadPassword),
+            "expected BadPassword/Db on wrong re-unlock, got {err:?}"
+        );
+
+        // Phase 3: correct password still works after the failed attempt.
+        let token2 = vault.unlock(PWD).unwrap();
+        // And the session is actually usable (proves the AES key is correct).
+        vault.list_keys(token2).unwrap();
     }
 
     #[test]
