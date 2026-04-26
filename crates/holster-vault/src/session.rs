@@ -132,7 +132,7 @@ impl SessionStore {
         let mut sessions = self.lock_sessions()?;
         let state = sessions.get(&token).ok_or(VaultError::InvalidSession)?;
         if state.is_idle_expired(self.idle_timeout, Utc::now()) {
-            sessions.remove(&token);  // drops Secret → zeroizes
+            sessions.remove(&token); // drops Secret → zeroizes
             return Err(VaultError::SessionExpired);
         }
         Ok(())
@@ -262,7 +262,10 @@ mod tests {
         let sessions = store.sessions.lock().unwrap();
         let s = sessions.get(&t).unwrap();
         let elapsed = Utc::now().signed_duration_since(s.last_activity_at);
-        assert!(elapsed.num_seconds() < 5, "touch should bring last_activity within 5s of now");
+        assert!(
+            elapsed.num_seconds() < 5,
+            "touch should bring last_activity within 5s of now"
+        );
     }
 
     #[test]
@@ -272,7 +275,11 @@ mod tests {
         std::thread::sleep(Duration::from_millis(10));
         let err = store.touch(t).unwrap_err();
         assert!(matches!(err, VaultError::SessionExpired));
-        assert_eq!(store.len().unwrap(), 0, "expired session should be removed by touch");
+        assert_eq!(
+            store.len().unwrap(),
+            0,
+            "expired session should be removed by touch"
+        );
     }
 
     #[test]
@@ -320,8 +327,10 @@ mod tests {
     fn session_state_debug_redacts_aes_key() {
         let state = SessionState::new(fresh_key(0xFF));
         let dbg = format!("{state:?}");
-        assert!(dbg.contains("<redacted>"),
-                "expected redacted marker, got: {dbg}");
+        assert!(
+            dbg.contains("<redacted>"),
+            "expected redacted marker, got: {dbg}"
+        );
         // 0xFF (which would render as "ff" or "255" or "[255, 255, ...]") must not appear
         assert!(!dbg.contains("255"), "Debug leaked AES key bytes: {dbg}");
         assert!(!dbg.contains("ff, ff"), "Debug leaked AES key bytes: {dbg}");
@@ -338,10 +347,10 @@ mod tests {
         // Before revoke: fetching the key returns the right bytes
         let snap = store.aes_key(t).unwrap();
         assert_eq!(*snap.expose_secret(), [0xAB; 32]);
-        drop(snap);  // local clone zeroizes here
+        drop(snap); // local clone zeroizes here
 
-        store.revoke(t).unwrap();  // remove + drop Secret → zeroize
-        // Post-revoke: token is gone
+        store.revoke(t).unwrap(); // remove + drop Secret → zeroize
+                                  // Post-revoke: token is gone
         let err = store.aes_key(t).unwrap_err();
         assert!(matches!(err, VaultError::InvalidSession));
     }

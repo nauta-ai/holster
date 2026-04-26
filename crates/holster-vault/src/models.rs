@@ -110,7 +110,7 @@ pub struct KeyMetadata {
 pub struct AddKeyInput {
     pub provider: Provider,
     pub label: String,
-    pub key_value: String,        // raw plaintext — encrypted before storage
+    pub key_value: String, // raw plaintext — encrypted before storage
     pub project_tag: Option<String>,
     pub expires_at: Option<DateTime<Utc>>,
     pub notes: Option<String>,
@@ -142,9 +142,15 @@ mod tests {
     #[test]
     fn provider_roundtrips_through_string() {
         for p in [
-            Provider::Anthropic, Provider::OpenAI, Provider::Google,
-            Provider::Replicate, Provider::ElevenLabs, Provider::Pinecone,
-            Provider::Stripe, Provider::Cloudflare, Provider::Generic,
+            Provider::Anthropic,
+            Provider::OpenAI,
+            Provider::Google,
+            Provider::Replicate,
+            Provider::ElevenLabs,
+            Provider::Pinecone,
+            Provider::Stripe,
+            Provider::Cloudflare,
+            Provider::Generic,
         ] {
             let s = p.as_str();
             assert_eq!(Provider::from_str(s), Some(p), "roundtrip failed for {s}");
@@ -203,12 +209,18 @@ mod tests {
             notes: None,
         };
         let dbg = format!("{input:?}");
-        assert!(dbg.contains("<redacted>"),
-                "expected redacted marker in Debug output, got: {dbg}");
-        assert!(!dbg.contains("sk-ant"),
-                "Debug output leaked plaintext key value: {dbg}");
-        assert!(!dbg.contains("1111111111111111"),
-                "Debug output leaked plaintext key value: {dbg}");
+        assert!(
+            dbg.contains("<redacted>"),
+            "expected redacted marker in Debug output, got: {dbg}"
+        );
+        assert!(
+            !dbg.contains("sk-ant"),
+            "Debug output leaked plaintext key value: {dbg}"
+        );
+        assert!(
+            !dbg.contains("1111111111111111"),
+            "Debug output leaked plaintext key value: {dbg}"
+        );
     }
 
     #[test]

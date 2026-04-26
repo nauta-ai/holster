@@ -19,12 +19,14 @@ use clap::{Parser, Subcommand, ValueEnum};
 use secrecy::ExposeSecret;
 use uuid::Uuid;
 
-use holster_vault::{
-    AddKeyInput, KeyMetadata, KeyStatus, Provider, Vault,
-};
+use holster_vault::{AddKeyInput, KeyMetadata, KeyStatus, Provider, Vault};
 
 #[derive(Parser)]
-#[command(name = "holster", about = "Holster vault CLI — local-first API key manager", version)]
+#[command(
+    name = "holster",
+    about = "Holster vault CLI — local-first API key manager",
+    version
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -33,9 +35,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Initialize a new vault at PATH. Prompts for password (entered twice).
-    Create {
-        path: PathBuf,
-    },
+    Create { path: PathBuf },
     /// Add a key to an existing vault.
     Add {
         path: PathBuf,
@@ -49,19 +49,11 @@ enum Command {
         notes: Option<String>,
     },
     /// List metadata for all keys (no plaintext shown).
-    List {
-        path: PathBuf,
-    },
+    List { path: PathBuf },
     /// Decrypt and print a key value.
-    Get {
-        path: PathBuf,
-        id: Uuid,
-    },
+    Get { path: PathBuf, id: Uuid },
     /// Delete a key by id.
-    Delete {
-        path: PathBuf,
-        id: Uuid,
-    },
+    Delete { path: PathBuf, id: Uuid },
 }
 
 #[derive(ValueEnum, Clone, Copy)]
@@ -111,8 +103,13 @@ fn main() -> ExitCode {
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Create { path } => cmd_create(&path),
-        Command::Add { path, provider, label, project, notes } =>
-            cmd_add(&path, provider.into(), label, project, notes),
+        Command::Add {
+            path,
+            provider,
+            label,
+            project,
+            notes,
+        } => cmd_add(&path, provider.into(), label, project, notes),
         Command::List { path } => cmd_list(&path),
         Command::Get { path, id } => cmd_get(&path, id),
         Command::Delete { path, id } => cmd_delete(&path, id),
@@ -120,10 +117,8 @@ fn run(cli: Cli) -> Result<()> {
 }
 
 fn cmd_create(path: &std::path::Path) -> Result<()> {
-    let pw = rpassword::prompt_password("New master password: ")
-        .context("reading password")?;
-    let confirm = rpassword::prompt_password("Confirm: ")
-        .context("reading confirmation")?;
+    let pw = rpassword::prompt_password("New master password: ").context("reading password")?;
+    let confirm = rpassword::prompt_password("Confirm: ").context("reading confirmation")?;
     if pw != confirm {
         return Err(anyhow!("passwords do not match"));
     }
@@ -142,10 +137,11 @@ fn cmd_add(
 ) -> Result<()> {
     let vault = Vault::open(path).context("opening vault")?;
     let pw = rpassword::prompt_password("Master password: ")?;
-    let token = vault.unlock(&pw).context("unlock failed (wrong password?)")?;
+    let token = vault
+        .unlock(&pw)
+        .context("unlock failed (wrong password?)")?;
 
-    let key_value = rpassword::prompt_password("Key value: ")
-        .context("reading key value")?;
+    let key_value = rpassword::prompt_password("Key value: ").context("reading key value")?;
     if key_value.is_empty() {
         return Err(anyhow!("empty key value"));
     }
@@ -169,7 +165,9 @@ fn cmd_add(
 fn cmd_list(path: &std::path::Path) -> Result<()> {
     let vault = Vault::open(path)?;
     let pw = rpassword::prompt_password("Master password: ")?;
-    let token = vault.unlock(&pw).context("unlock failed (wrong password?)")?;
+    let token = vault
+        .unlock(&pw)
+        .context("unlock failed (wrong password?)")?;
     let metas = vault.list_keys(token).context("listing keys")?;
     if metas.is_empty() {
         println!("(no keys)");
@@ -187,8 +185,12 @@ fn cmd_list(path: &std::path::Path) -> Result<()> {
 fn cmd_get(path: &std::path::Path, id: Uuid) -> Result<()> {
     let vault = Vault::open(path)?;
     let pw = rpassword::prompt_password("Master password: ")?;
-    let token = vault.unlock(&pw).context("unlock failed (wrong password?)")?;
-    let secret = vault.get_key_value(token, id).context("getting key value")?;
+    let token = vault
+        .unlock(&pw)
+        .context("unlock failed (wrong password?)")?;
+    let secret = vault
+        .get_key_value(token, id)
+        .context("getting key value")?;
     println!("{}", secret.expose_secret());
     vault.lock(token).ok();
     Ok(())
@@ -197,7 +199,9 @@ fn cmd_get(path: &std::path::Path, id: Uuid) -> Result<()> {
 fn cmd_delete(path: &std::path::Path, id: Uuid) -> Result<()> {
     let vault = Vault::open(path)?;
     let pw = rpassword::prompt_password("Master password: ")?;
-    let token = vault.unlock(&pw).context("unlock failed (wrong password?)")?;
+    let token = vault
+        .unlock(&pw)
+        .context("unlock failed (wrong password?)")?;
     vault.delete_key(token, id).context("deleting key")?;
     println!("✓ deleted {id}");
     vault.lock(token).ok();
@@ -227,7 +231,10 @@ fn print_metadata(m: &KeyMetadata) {
 
 fn salt_path(vault: &std::path::Path) -> PathBuf {
     let mut p = vault.to_path_buf();
-    let new_name = format!("{}.salt", p.file_name().and_then(|s| s.to_str()).unwrap_or("vault"));
+    let new_name = format!(
+        "{}.salt",
+        p.file_name().and_then(|s| s.to_str()).unwrap_or("vault")
+    );
     p.set_file_name(new_name);
     p
 }

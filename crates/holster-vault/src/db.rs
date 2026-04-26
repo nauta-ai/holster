@@ -94,7 +94,10 @@ impl std::fmt::Debug for KeyRecord {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KeyRecord")
             .field("metadata", &self.metadata)
-            .field("key_ciphertext", &format_args!("<{} bytes redacted>", self.key_ciphertext.len()))
+            .field(
+                "key_ciphertext",
+                &format_args!("<{} bytes redacted>", self.key_ciphertext.len()),
+            )
             .field("key_nonce", &"<redacted>")
             .finish()
     }
@@ -136,19 +139,24 @@ impl Database {
         // Foreign keys are off by default in SQLite — turn on so usage_snapshots cascade works.
         conn.execute_batch("PRAGMA foreign_keys = ON;")?;
 
-        let db = Database { conn: Mutex::new(conn) };
+        let db = Database {
+            conn: Mutex::new(conn),
+        };
         db.run_migrations()?;
         Ok(db)
     }
 
     fn run_migrations(&self) -> Result<(), VaultError> {
-        let conn = self.conn.lock().map_err(|_| {
-            VaultError::Crypto("db mutex poisoned during migration".into())
-        })?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| VaultError::Crypto("db mutex poisoned during migration".into()))?;
         conn.execute_batch(INIT_DDL)?;
         // Bootstrap vault_meta if empty
         let meta_row: Option<i64> = conn
-            .query_row("SELECT schema_version FROM vault_meta LIMIT 1", [], |r| r.get(0))
+            .query_row("SELECT schema_version FROM vault_meta LIMIT 1", [], |r| {
+                r.get(0)
+            })
             .optional()?;
         if meta_row.is_none() {
             conn.execute(
@@ -163,24 +171,26 @@ impl Database {
     /// Update the salt stored in vault_meta. Called once during vault creation
     /// (after generating the salt for Argon2).
     pub fn set_salt(&self, salt: &[u8; 16]) -> Result<(), VaultError> {
-        let conn = self.conn.lock().map_err(|_| {
-            VaultError::Crypto("db mutex poisoned".into())
-        })?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| VaultError::Crypto("db mutex poisoned".into()))?;
         conn.execute("UPDATE vault_meta SET salt = ?1", params![&salt[..]])?;
         Ok(())
     }
 
     /// Read the stored salt for Argon2 re-derivation on unlock.
     pub fn get_salt(&self) -> Result<[u8; 16], VaultError> {
-        let conn = self.conn.lock().map_err(|_| {
-            VaultError::Crypto("db mutex poisoned".into())
-        })?;
-        let blob: Vec<u8> = conn.query_row(
-            "SELECT salt FROM vault_meta LIMIT 1", [], |r| r.get(0),
-        )?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| VaultError::Crypto("db mutex poisoned".into()))?;
+        let blob: Vec<u8> =
+            conn.query_row("SELECT salt FROM vault_meta LIMIT 1", [], |r| r.get(0))?;
         if blob.len() != 16 {
             return Err(VaultError::Migration(format!(
-                "salt has wrong length: got {}, want 16", blob.len()
+                "salt has wrong length: got {}, want 16",
+                blob.len()
             )));
         }
         let mut out = [0u8; 16];
@@ -191,9 +201,10 @@ impl Database {
     // ── Key CRUD ─────────────────────────────────────────────────────────────-
 
     pub fn insert_key(&self, p: InsertKeyParams) -> Result<KeyMetadata, VaultError> {
-        let conn = self.conn.lock().map_err(|_| {
-            VaultError::Crypto("db mutex poisoned".into())
-        })?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| VaultError::Crypto("db mutex poisoned".into()))?;
         conn.execute(
             "INSERT INTO keys (
                 id, provider, label, project_tag,
@@ -228,41 +239,67 @@ impl Database {
     }
 
     pub fn select_key_by_id(&self, id: Uuid) -> Result<KeyRecord, VaultError> {
-        let conn = self.conn.lock().map_err(|_| {
-            VaultError::Crypto("db mutex poisoned".into())
-        })?;
-        let row = conn.query_row(
-            "SELECT provider, label, project_tag, key_ciphertext, key_nonce,
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| VaultError::Crypto("db mutex poisoned".into()))?;
+        let row = conn
+            .query_row(
+                "SELECT provider, label, project_tag, key_ciphertext, key_nonce,
                     created_at, expires_at, last_rotated_at, last_used_at, notes, revoked
              FROM keys WHERE id = ?1",
-            params![id.to_string()],
-            |row| {
-                let provider: String = row.get(0)?;
-                let label: String = row.get(1)?;
-                let project_tag: Option<String> = row.get(2)?;
-                let ct: Vec<u8> = row.get(3)?;
-                let nonce_blob: Vec<u8> = row.get(4)?;
-                let created_at: String = row.get(5)?;
-                let expires_at: Option<String> = row.get(6)?;
-                let last_rotated_at: Option<String> = row.get(7)?;
-                let last_used_at: Option<String> = row.get(8)?;
-                let notes: Option<String> = row.get(9)?;
-                let revoked: i64 = row.get(10)?;
-                Ok((provider, label, project_tag, ct, nonce_blob,
-                    created_at, expires_at, last_rotated_at, last_used_at, notes, revoked))
-            },
-        ).optional()?;
+                params![id.to_string()],
+                |row| {
+                    let provider: String = row.get(0)?;
+                    let label: String = row.get(1)?;
+                    let project_tag: Option<String> = row.get(2)?;
+                    let ct: Vec<u8> = row.get(3)?;
+                    let nonce_blob: Vec<u8> = row.get(4)?;
+                    let created_at: String = row.get(5)?;
+                    let expires_at: Option<String> = row.get(6)?;
+                    let last_rotated_at: Option<String> = row.get(7)?;
+                    let last_used_at: Option<String> = row.get(8)?;
+                    let notes: Option<String> = row.get(9)?;
+                    let revoked: i64 = row.get(10)?;
+                    Ok((
+                        provider,
+                        label,
+                        project_tag,
+                        ct,
+                        nonce_blob,
+                        created_at,
+                        expires_at,
+                        last_rotated_at,
+                        last_used_at,
+                        notes,
+                        revoked,
+                    ))
+                },
+            )
+            .optional()?;
 
         let row = row.ok_or(VaultError::KeyNotFound(id))?;
-        let (provider_s, label, project_tag, ct, nonce_blob,
-             created_s, expires_s, rotated_s, used_s, notes, revoked) = row;
+        let (
+            provider_s,
+            label,
+            project_tag,
+            ct,
+            nonce_blob,
+            created_s,
+            expires_s,
+            rotated_s,
+            used_s,
+            notes,
+            revoked,
+        ) = row;
 
         let provider = Provider::from_str(&provider_s).ok_or_else(|| {
             VaultError::Migration(format!("unknown provider in db: {provider_s}"))
         })?;
         if nonce_blob.len() != 12 {
             return Err(VaultError::Crypto(format!(
-                "nonce has wrong length: got {}, want 12", nonce_blob.len()
+                "nonce has wrong length: got {}, want 12",
+                nonce_blob.len()
             )));
         }
         let mut nonce = [0u8; 12];
@@ -277,21 +314,30 @@ impl Database {
             expires_at: expires_s.as_deref().map(parse_iso).transpose()?,
             last_rotated_at: rotated_s.as_deref().map(parse_iso).transpose()?,
             last_used_at: used_s.as_deref().map(parse_iso).transpose()?,
-            status: if revoked != 0 { KeyStatus::Revoked } else { KeyStatus::Active },
+            status: if revoked != 0 {
+                KeyStatus::Revoked
+            } else {
+                KeyStatus::Active
+            },
             notes,
             key_format_valid: true,
         };
-        Ok(KeyRecord { metadata, key_ciphertext: ct, key_nonce: nonce })
+        Ok(KeyRecord {
+            metadata,
+            key_ciphertext: ct,
+            key_nonce: nonce,
+        })
     }
 
     pub fn select_all_metadata(&self) -> Result<Vec<KeyMetadata>, VaultError> {
-        let conn = self.conn.lock().map_err(|_| {
-            VaultError::Crypto("db mutex poisoned".into())
-        })?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| VaultError::Crypto("db mutex poisoned".into()))?;
         let mut stmt = conn.prepare(
             "SELECT id, provider, label, project_tag, created_at, expires_at,
                     last_rotated_at, last_used_at, notes, revoked
-             FROM keys ORDER BY created_at DESC"
+             FROM keys ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map([], |row| {
             let id_s: String = row.get(0)?;
@@ -304,27 +350,52 @@ impl Database {
             let used_s: Option<String> = row.get(7)?;
             let notes: Option<String> = row.get(8)?;
             let revoked: i64 = row.get(9)?;
-            Ok((id_s, provider_s, label, project_tag, created_s,
-                expires_s, rotated_s, used_s, notes, revoked))
+            Ok((
+                id_s,
+                provider_s,
+                label,
+                project_tag,
+                created_s,
+                expires_s,
+                rotated_s,
+                used_s,
+                notes,
+                revoked,
+            ))
         })?;
 
         let mut out = Vec::new();
         for r in rows {
-            let (id_s, provider_s, label, project_tag, created_s,
-                 expires_s, rotated_s, used_s, notes, revoked) = r?;
-            let id = Uuid::parse_str(&id_s).map_err(|e| {
-                VaultError::Migration(format!("bad UUID in db: {e}"))
-            })?;
-            let provider = Provider::from_str(&provider_s).ok_or_else(|| {
-                VaultError::Migration(format!("unknown provider: {provider_s}"))
-            })?;
+            let (
+                id_s,
+                provider_s,
+                label,
+                project_tag,
+                created_s,
+                expires_s,
+                rotated_s,
+                used_s,
+                notes,
+                revoked,
+            ) = r?;
+            let id = Uuid::parse_str(&id_s)
+                .map_err(|e| VaultError::Migration(format!("bad UUID in db: {e}")))?;
+            let provider = Provider::from_str(&provider_s)
+                .ok_or_else(|| VaultError::Migration(format!("unknown provider: {provider_s}")))?;
             out.push(KeyMetadata {
-                id, provider, label, project_tag,
+                id,
+                provider,
+                label,
+                project_tag,
                 created_at: parse_iso(&created_s)?,
                 expires_at: expires_s.as_deref().map(parse_iso).transpose()?,
                 last_rotated_at: rotated_s.as_deref().map(parse_iso).transpose()?,
                 last_used_at: used_s.as_deref().map(parse_iso).transpose()?,
-                status: if revoked != 0 { KeyStatus::Revoked } else { KeyStatus::Active },
+                status: if revoked != 0 {
+                    KeyStatus::Revoked
+                } else {
+                    KeyStatus::Active
+                },
                 notes,
                 key_format_valid: true,
             });
@@ -333,9 +404,10 @@ impl Database {
     }
 
     pub fn update_last_used(&self, id: Uuid, ts: DateTime<Utc>) -> Result<(), VaultError> {
-        let conn = self.conn.lock().map_err(|_| {
-            VaultError::Crypto("db mutex poisoned".into())
-        })?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| VaultError::Crypto("db mutex poisoned".into()))?;
         let n = conn.execute(
             "UPDATE keys SET last_used_at = ?1 WHERE id = ?2",
             params![ts.to_rfc3339(), id.to_string()],
@@ -347,9 +419,10 @@ impl Database {
     }
 
     pub fn delete_key(&self, id: Uuid) -> Result<(), VaultError> {
-        let conn = self.conn.lock().map_err(|_| {
-            VaultError::Crypto("db mutex poisoned".into())
-        })?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| VaultError::Crypto("db mutex poisoned".into()))?;
         let n = conn.execute("DELETE FROM keys WHERE id = ?1", params![id.to_string()])?;
         if n == 0 {
             return Err(VaultError::KeyNotFound(id));
@@ -442,7 +515,10 @@ mod tests {
         // Critical: ensure no plaintext leaks via metadata path
         for m in &all {
             let dbg = format!("{m:?}");
-            assert!(!dbg.contains("AB"), "metadata Debug should never contain ciphertext bytes");
+            assert!(
+                !dbg.contains("AB"),
+                "metadata Debug should never contain ciphertext bytes"
+            );
         }
     }
 
