@@ -77,6 +77,11 @@ impl Vault {
         let db = Database::open(path, keys.sqlcipher_key.expose_secret())?;
         // Mirror salt inside the db so it is recoverable from the sidecar's siblings.
         db.set_salt(&salt)?;
+        // V-4 fix: tighten perms on the vault file to 0600 (owner rw only).
+        // SQLCipher creates the file via SQLite, which inherits the user's
+        // umask — typically 0644 on macOS. Mirrors the sidecar treatment.
+        // Best-effort on Unix; not fatal on weird filesystems.
+        set_vault_file_perms(path);
         // Drop db handle — start in locked state. Caller calls unlock() to get a session.
         drop(db);
 
@@ -226,6 +231,24 @@ impl Vault {
             Some(db) => f(db),
             None => Err(VaultError::Locked),
         }
+    }
+}
+
+// ── File-permission helpers ───────────────────────────────────────────────────
+
+/// V-4 fix: ensure the vault DB file is 0600 (owner read/write only) on Unix.
+/// SQLite creates the file under the user's umask (typically 0644 on macOS),
+/// which leaves the ciphertext world-readable. The contents are still
+/// SQLCipher-encrypted, but tightening perms is cheap defense in depth and
+/// mirrors how the salt sidecar is handled.
+///
+/// Best-effort: failures are intentionally ignored (some filesystems do not
+/// honour Unix mode bits). On non-Unix targets this is a no-op.
+fn set_vault_file_perms(_vault_path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(_vault_path, std::fs::Permissions::from_mode(0o600));
     }
 }
 
@@ -462,5 +485,32 @@ mod tests {
         let p = Path::new("/tmp/holster/vault.db");
         let salt_p = salt_sidecar_path(p);
         assert_eq!(salt_p, Path::new("/tmp/holster/vault.db.salt"));
+    }
+
+    /// Regression test for V-4 (security review, 2026-04-26):
+    /// the vault DB file must be 0600 (owner rw only) after `Vault::create`,
+    /// not the default 0644 inherited from the typical macOS umask.
+    /// The salt sidecar must also be 0600 (existing invariant — pinned here).
+    #[cfg(unix)]
+    #[test]
+    fn create_sets_vault_file_mode_0600() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("vault.db");
+        let _vault = Vault::create(&path, PWD).unwrap();
+
+        let db_mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            db_mode, 0o600,
+            "vault db file should be 0600, was {db_mode:o}"
+        );
+
+        let salt_path = salt_sidecar_path(&path);
+        let salt_mode = std::fs::metadata(&salt_path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            salt_mode, 0o600,
+            "salt sidecar should be 0600, was {salt_mode:o}"
+        );
     }
 }
