@@ -35,9 +35,41 @@ Verified at sign-off (macOS ARM64, Dave's laptop):
 - `cargo clippy --workspace --all-targets -- -D warnings` → clean
 - `cargo fmt --all -- --check` → clean
 
-## Up next (in order)
+## M2 — Desktop app shell + unlock UX (shipped, awaiting Dave's manual acceptance)
 
-(M2 backlog lives in `docs/framework/06_MILESTONE_1_TASKS.md` follow-on docs.)
+Spec: `docs/framework/05_MILESTONES.md` § M2.
+
+- [x] T2.0 — Tauri 2 backend scaffold (`apps/desktop/src-tauri/{Cargo.toml,build.rs,tauri.conf.json,capabilities/default.json,icons/}`)
+- [x] T2.1 — IPC commands wrapping `Vault` (`vault_status`, `create_vault`,
+      `unlock_vault`, `lock_vault`, `list_keys`, `add_key`, `delete_key`,
+      `copy_to_clipboard`). Session token never crosses the IPC boundary.
+- [x] T2.2 — Sanitized error mapping (`VaultError` → user-facing strings)
+- [x] T2.3 — SvelteKit (Svelte 5) frontend with static adapter (`pnpm --filter holster-desktop-ui build`)
+- [x] T2.4 — First-run wizard (creates vault at `~/Library/Application Support/com.nautaai.holster/vault.db`)
+- [x] T2.5 — Unlock screen (clean error on wrong password — no stack trace)
+- [x] T2.6 — Key list view (provider | label | project | created | last_used; no plaintext)
+- [x] T2.7 — Add-key dialog (provider dropdown, masked key input)
+- [x] T2.8 — Delete-key confirmation modal
+- [x] T2.9 — Copy-to-clipboard with 30-second auto-clear (clipboard write happens in Rust, plaintext never leaves the IPC boundary by JS)
+- [x] T2.10 — Auto-lock observation (UI polls `list_keys` every 60s; on `SessionExpired` from the crate, bounces back to unlock screen)
+- [x] T2.11 — README at `apps/desktop/README.md`
+
+Verified locally (macOS arm64):
+
+- `cargo test --workspace` → 50 passed, 0 failed (no M1 regressions)
+- `cargo clippy --workspace --all-targets -- -D warnings` → clean
+- `cargo fmt --all -- --check` → clean
+- `pnpm --filter holster-desktop-ui build` → SvelteKit static build to `apps/desktop/build/`
+- `pnpm exec tauri build --no-bundle` → arm64 release binary at `target/release/holster-desktop`
+
+Items deferred to M3 (per spec): expiry/status logic, notifications, password
+strength meter (zxcvbn), reveal-with-countdown button, settings panel for
+clipboard TTL / idle timeout.
+
+## Up next
+
+- M2 manual acceptance by Dave (`pnpm exec tauri dev` from `apps/desktop/`).
+- M3 — lifecycle (expiry dates, status colors, notifications) per `docs/framework/05_MILESTONES.md` § M3.
 
 ## Operating rules
 
