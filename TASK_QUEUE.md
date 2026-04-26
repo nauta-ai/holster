@@ -9,10 +9,10 @@
 - [x] T1.4 — Models (Provider, KeyStatus, KeyMetadata, AddKeyInput w/ redacted Debug, 7 tests)
 - [x] T1.5 — DB module (SQLCipher schema + parameterized CRUD, 11 tests passing)
 - [x] T1.6 — Session module (UUID newtype tokens, idle timeout, 12 tests)
+- [x] T1.7 — Vault facade (create/open/unlock/lock + add/list/get/delete, 12 tests including full lifecycle)
 
 ## Up next (in order)
 
-- [ ] T1.7 — Vault facade (public API tying crypto + db + session)
 - [ ] T1.8 — Test harness CLI (apps/cli)
 - [ ] T1.9 — CC review pass
 

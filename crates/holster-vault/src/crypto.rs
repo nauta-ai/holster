@@ -128,8 +128,8 @@ pub fn decrypt_key_value(
         .decrypt(nonce, ciphertext)
         .map_err(|e| VaultError::Crypto(format!("aes decrypt: {e}")))?;
 
-    let plaintext = String::from_utf8(plaintext_bytes)
-        .map_err(|e| VaultError::Crypto(format!("utf8: {e}")))?;
+    let plaintext =
+        String::from_utf8(plaintext_bytes).map_err(|e| VaultError::Crypto(format!("utf8: {e}")))?;
 
     Ok(Secret::new(plaintext))
 }
