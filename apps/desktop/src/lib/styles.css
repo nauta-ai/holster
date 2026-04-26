@@ -1,0 +1,294 @@
+/* Holster desktop UI — lean, dark-mode-friendly. */
+
+:root {
+  --bg: #1a1a1f;
+  --bg-elevated: #23232a;
+  --bg-input: #14141a;
+  --fg: #e8e8ec;
+  --fg-muted: #9a9aa6;
+  --accent: #d4a55a;
+  --accent-muted: #8a7042;
+  --danger: #d4684a;
+  --success: #6ad48a;
+  --border: #34343d;
+  --radius: 6px;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f4ee;
+    --bg-elevated: #ffffff;
+    --bg-input: #ffffff;
+    --fg: #1a1a1f;
+    --fg-muted: #6c6c78;
+    --accent: #b07e2e;
+    --accent-muted: #c8a363;
+    --danger: #b04a30;
+    --success: #2f7a4a;
+    --border: #d8d3c4;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+body, #app, main {
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background 120ms;
+}
+button:hover:not(:disabled) {
+  background: var(--border);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+button.primary {
+  background: var(--accent);
+  color: #1a1a1f;
+  border-color: var(--accent);
+  font-weight: 500;
+}
+button.primary:hover:not(:disabled) {
+  background: var(--accent-muted);
+}
+button.danger {
+  background: var(--danger);
+  color: #ffffff;
+  border-color: var(--danger);
+}
+button.ghost {
+  background: transparent;
+}
+
+input, select, textarea {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  width: 100%;
+}
+input:focus, select:focus, textarea:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent);
+}
+
+label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.field {
+  margin-bottom: 14px;
+}
+
+.error-box {
+  margin: 10px 0;
+  padding: 8px 12px;
+  background: rgba(212, 104, 74, 0.12);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--success);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  font-size: 13px;
+  z-index: 1000;
+}
+
+.muted {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+/* Centered single-pane layouts (first-run, unlock) */
+.center-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 40px 20px;
+}
+.center-screen .card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 28px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.center-screen h1 {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 600;
+}
+.center-screen .subtitle {
+  margin: 0 0 22px;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
+/* Main app shell */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.app-shell header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+.app-shell header .brand {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+.app-shell header .actions {
+  display: flex;
+  gap: 8px;
+}
+.app-shell main {
+  flex: 1;
+  overflow: auto;
+  padding: 20px;
+}
+
+/* Key list table */
+.keys-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.keys-table th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.keys-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.keys-table tbody tr:hover {
+  background: var(--bg-elevated);
+}
+.keys-table .id-cell {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+.keys-table .row-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.keys-table .row-actions button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--fg-muted);
+}
+
+/* Modal */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  width: 100%;
+  max-width: 460px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+}
+.modal h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.modal .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.provider-badge {
+  display: inline-block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg-muted);
+}
