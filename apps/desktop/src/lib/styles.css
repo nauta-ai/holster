@@ -223,6 +223,30 @@ label {
     linear-gradient(180deg, var(--bg), var(--bg-depth) 82%);
 }
 
+.app-shell.level-shell {
+  display: block;
+  min-height: 100vh;
+  height: auto;
+  background:
+    linear-gradient(180deg, rgba(106, 212, 138, 0.035), transparent 40%),
+    var(--bg);
+}
+
+.app-shell.level-shell .side-rail,
+.app-shell.level-shell .topbar {
+  display: none;
+}
+
+.app-shell.level-shell .workspace {
+  min-height: 100vh;
+}
+
+.app-shell.level-shell .workspace main {
+  min-height: 100vh;
+  padding: 0 24px;
+  overflow: visible;
+}
+
 .side-rail {
   display: flex;
   flex-direction: column;
@@ -374,6 +398,98 @@ button.module-item {
   flex: 1;
   overflow: auto;
   padding: 22px 28px 28px;
+}
+
+.level-landing {
+  display: grid;
+  align-content: center;
+  min-height: calc(100vh - 128px);
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 28px 0;
+}
+.level-shell .level-landing {
+  min-height: 100vh;
+  padding: 48px 0;
+}
+.level-brand-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(106, 212, 138, 0.36);
+  border-radius: 10px;
+  background: rgba(106, 212, 138, 0.09);
+  color: var(--success);
+  font-weight: 800;
+}
+.level-landing h2 {
+  margin: 8px 0 10px;
+  max-width: 620px;
+  font-size: 44px;
+  line-height: 1.02;
+  letter-spacing: 0;
+}
+.level-landing > p {
+  margin: 0;
+  max-width: 620px;
+  color: var(--fg-muted);
+  font-size: 17px;
+  line-height: 1.5;
+}
+.level-next {
+  display: grid;
+  gap: 6px;
+  margin-top: 28px;
+  padding: 18px 0 0;
+  border-top: 1px solid rgba(106, 212, 138, 0.28);
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+.level-next span {
+  color: var(--success);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.level-next strong {
+  font-size: 22px;
+}
+.level-next p {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.level-actions {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  max-width: 360px;
+}
+.level-actions button {
+  min-height: 40px;
+}
+.level-secondary-actions {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+}
+.text-button {
+  border: 0;
+  background: transparent;
+  color: var(--fg-subtle);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.text-button:hover {
+  color: var(--fg-muted);
 }
 
 .doctor-banner,
@@ -2100,6 +2216,29 @@ button.module-item {
 
   .workspace main {
     padding: 16px;
+  }
+
+  .level-landing {
+    min-height: calc(100vh - 220px);
+    padding: 22px 0;
+  }
+
+  .level-shell .level-landing {
+    min-height: 100vh;
+    padding: 32px 0;
+  }
+
+  .level-landing h2 {
+    font-size: 34px;
+  }
+
+  .level-landing > p {
+    font-size: 15px;
+  }
+
+  .level-actions {
+    grid-template-columns: 1fr;
+    max-width: none;
   }
 
   .doctor-banner,

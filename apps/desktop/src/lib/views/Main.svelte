@@ -26,6 +26,9 @@
   let showDoctor = $state(false);
   let showBuildbelt = $state(false);
   let buildbeltStartupMode = $state(false);
+  let startupComplete = $state(false);
+  let startupAudience = $state<'personal' | 'business'>('personal');
+  let showAdvancedTools = $state(false);
   let showGitignore = $state(false);
   let showEnvExample = $state(false);
   let showAuth = $state(false);
@@ -89,6 +92,31 @@
     showBuildbelt = true;
   }
 
+  function refreshStartupState() {
+    try {
+      startupComplete = localStorage.getItem('buildbeltStartupComplete') === 'true';
+      const progress = JSON.parse(localStorage.getItem('buildbeltStartupProgress') ?? '{}');
+      startupAudience = progress.startupAudience === 'business' ? 'business' : 'personal';
+    } catch {
+      startupComplete = false;
+      startupAudience = 'personal';
+    }
+    showAdvancedTools = false;
+  }
+
+  function resetStartup() {
+    try {
+      localStorage.removeItem('buildbeltStartupComplete');
+      localStorage.removeItem('buildbeltStartupProgress');
+    } catch {
+      // Startup can still restart in this session.
+    }
+    startupComplete = false;
+    startupAudience = 'personal';
+    showAdvancedTools = false;
+    openBuildbelt(true);
+  }
+
   function fmtDate(s: string | null): string {
     if (!s) return '—';
     try {
@@ -115,6 +143,7 @@
   $effect(() => {
     refresh();
     pollTimer = setInterval(refresh, 60_000);
+    refreshStartupState();
     try {
       if (localStorage.getItem('buildbeltStartupComplete') !== 'true') {
         openBuildbelt(true);
@@ -128,7 +157,7 @@
   });
 </script>
 
-<div class="app-shell">
+<div class="app-shell" class:level-shell={startupComplete && !showAdvancedTools}>
   <aside class="side-rail" aria-label="Holster modules">
     <div class="brand-block">
       <div class="brand-mark">N</div>
@@ -200,6 +229,43 @@
       <div class="error-box">{error}</div>
     {/if}
 
+    {#if startupComplete && !showAdvancedTools}
+      <section class="level-landing" aria-label="Buildbelt next level">
+        <div class="level-brand-mark">N</div>
+        <p class="eyebrow">Buildbelt by NautaAI</p>
+        {#if startupAudience === 'business'}
+          <h2>Level 1 complete.</h2>
+          <p>You have the safe starting line. Next, decide how your team moves from simple AI use into a real business system.</p>
+          <div class="level-next">
+            <span>Next level</span>
+            <strong>Build the team system.</strong>
+            <p>Choose approved tools, owner controls, file rules, and when a workflow is ready for keys or agents.</p>
+          </div>
+          <div class="level-actions">
+            <button class="primary" onclick={() => openBuildbelt(false)}>Start Level 2</button>
+            <div class="level-secondary-actions">
+              <button class="text-button" onclick={resetStartup}>Restart Level 1</button>
+              <button class="text-button" onclick={() => (showAdvancedTools = true)}>Advanced tools</button>
+            </div>
+          </div>
+        {:else}
+          <h2>Level 1 complete.</h2>
+          <p>You have started with one AI app. Next, decide whether to keep using what you have or build a real AI system.</p>
+          <div class="level-next">
+            <span>Next level</span>
+            <strong>Build your system.</strong>
+            <p>Choose old computer or new system, secure the account, and add tools only when there is a real workflow.</p>
+          </div>
+          <div class="level-actions">
+            <button class="primary" onclick={() => openBuildbelt(false)}>Start Level 2</button>
+            <div class="level-secondary-actions">
+              <button class="text-button" onclick={resetStartup}>Restart Level 1</button>
+              <button class="text-button" onclick={() => (showAdvancedTools = true)}>Advanced tools</button>
+            </div>
+          </div>
+        {/if}
+      </section>
+    {:else}
     <section class="buildbelt-banner" aria-label="Buildbelt setup">
       <div>
         <p class="eyebrow">Buildbelt Alpha</p>
@@ -309,6 +375,7 @@
         </table>
       </section>
     {/if}
+    {/if}
     </main>
   </section>
 </div>
@@ -350,10 +417,12 @@
     onClose={() => {
       showBuildbelt = false;
       buildbeltStartupMode = false;
+      refreshStartupState();
     }}
     onStartupDone={() => {
       showBuildbelt = false;
       buildbeltStartupMode = false;
+      refreshStartupState();
     }}
     onOpenDoctor={() => (showDoctor = true)}
   />
