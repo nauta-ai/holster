@@ -8,6 +8,8 @@
 #![warn(clippy::expect_used)]
 #![warn(clippy::panic)]
 
+pub mod agent_profile;
+pub mod audit;
 pub mod crypto;
 pub mod db;
 pub mod error;
@@ -15,6 +17,8 @@ pub mod models;
 pub mod session;
 pub mod vault;
 
+pub use agent_profile::{AgentProfile, AgentProfileStore, AllowedKeyPattern};
+pub use audit::{AuditEvent, AuditLogger, AuditOutcome};
 pub use error::VaultError;
 pub use models::{AddKeyInput, KeyMetadata, KeyStatus, Provider};
 pub use session::SessionToken;

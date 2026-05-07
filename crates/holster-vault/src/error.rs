@@ -37,6 +37,9 @@ pub enum VaultError {
     #[error("key not found: {0}")]
     KeyNotFound(uuid::Uuid),
 
+    #[error("access denied")]
+    AccessDenied,
+
     #[error("schema migration failed: {0}")]
     Migration(String),
 

@@ -19,6 +19,9 @@ The default place where AI developers keep their API keys. A menu bar app you fo
 3. **Audit** — see all keys, their status, when last used, when expiring
 4. **Detect** — scan local repos for accidentally committed keys
 5. **Spend** — know what each provider and project is costing this month
+6. **Handoff** — safely export selected keys into a project or agent runtime
+   profile (`.env`, OpenClaw, Hermes, Codex, Claude Code, Docker later)
+   without dumping the whole vault.
 
 ## Non-goals (v1)
 
@@ -29,6 +32,25 @@ The default place where AI developers keep their API keys. A menu bar app you fo
 - Not Windows or Linux (v1)
 - Not a credential manager for non-AI services (no SSH keys, no DB passwords)
 - Not a generic password manager (passwords for websites)
+
+## Runtime export / agent handoff
+
+Holster must be useful at the exact moment a builder needs a key in a tool.
+The product should support selected-key runtime profiles rather than whole-vault
+exports:
+
+- `.env` / `.env.local` file export for a chosen project folder.
+- Preview with variable names only; values stay redacted.
+- Least privilege by default: user selects each key.
+- Refuse to write secrets to a target env file already tracked by git.
+- Optional `.gitignore` protection for `.env`, `.env.local`, and `*.env`.
+- Optional backup before replacing an existing env file.
+- Export audit log records timestamp, target, profile, and key names only.
+- Future profiles: OpenClaw, Hermes, Codex, Claude Code, Cursor, Docker/Compose,
+  and macOS LaunchAgent wrapper snippets.
+
+Non-goal: exporting the entire vault or writing production service env without
+explicit human approval.
 
 ## Success criteria
 

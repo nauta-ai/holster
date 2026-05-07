@@ -24,6 +24,8 @@ use chrono::Utc;
 use secrecy::{ExposeSecret, Secret};
 use uuid::Uuid;
 
+use crate::agent_profile::AgentProfileStore;
+use crate::audit::{AuditEvent, AuditLogger, AuditOutcome};
 use crate::crypto::{decrypt_key_value, derive_keys, encrypt_key_value, generate_salt};
 use crate::db::{Database, InsertKeyParams};
 use crate::error::VaultError;
@@ -210,6 +212,40 @@ impl Vault {
         Ok(())
     }
 
+    /// Fetch a key for an agent through a metadata allowlist and audit logger.
+    ///
+    /// This is the first runtime-safe path for fake-key testing. It never logs,
+    /// prints, or serializes the plaintext key value. Callers get a
+    /// `Secret<String>` only after the agent profile allows the metadata match.
+    pub fn fetch_key_for_agent(
+        &self,
+        token: SessionToken,
+        agent_id: &str,
+        id: Uuid,
+        profiles: &AgentProfileStore,
+        audit: &AuditLogger,
+    ) -> Result<Secret<String>, VaultError> {
+        self.sessions.validate(token)?;
+
+        let metadata = self.with_db(|db| db.select_key_by_id(id).map(|record| record.metadata))?;
+
+        if !profiles.allows(agent_id, &metadata) {
+            let event = AuditEvent::fetch(
+                agent_id,
+                &metadata,
+                AuditOutcome::Denied,
+                Some("agent_profile_denied"),
+            );
+            audit.log(&event)?;
+            return Err(VaultError::AccessDenied);
+        }
+
+        let secret = self.get_key_value(token, id)?;
+        let event = AuditEvent::fetch(agent_id, &metadata, AuditOutcome::Allowed, None);
+        audit.log(&event)?;
+        Ok(secret)
+    }
+
     // ── Private helpers ──────────────────────────────────────────────────────
 
     /// Returns the AES key for a valid session, or an error.
@@ -296,6 +332,7 @@ fn read_salt_sidecar(vault_path: &Path) -> Result<[u8; SALT_LEN], VaultError> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::agent_profile::{AgentProfile, AgentProfileStore, AllowedKeyPattern};
     use crate::models::Provider;
     use tempfile::TempDir;
 
@@ -319,6 +356,29 @@ mod tests {
             notes: None,
         };
         vault.add_key(token, input).unwrap().id
+    }
+
+    fn add_fake_key(vault: &Vault, token: SessionToken, label: &str, project_tag: &str) -> Uuid {
+        let input = AddKeyInput {
+            provider: Provider::Generic,
+            label: label.to_string(),
+            key_value: "sk-test-fake-agent-runtime-000000".to_string(),
+            project_tag: Some(project_tag.to_string()),
+            expires_at: None,
+            notes: Some("fake runtime test key".to_string()),
+        };
+        vault.add_key(token, input).unwrap().id
+    }
+
+    fn codex_fake_profiles() -> AgentProfileStore {
+        AgentProfileStore::new(vec![AgentProfile::new(
+            "codex",
+            vec![AllowedKeyPattern::new(
+                Some(Provider::Generic),
+                Some("fake-codex".to_string()),
+                Some("fake-*".to_string()),
+            )],
+        )])
     }
 
     #[test]
@@ -478,6 +538,52 @@ mod tests {
         let metas = vault.list_keys(token2).unwrap();
         assert_eq!(metas.len(), 1);
         assert_eq!(metas[0].id, id);
+    }
+
+    #[test]
+    fn fetch_key_for_agent_allows_matching_fake_key_and_audits() {
+        let (dir, vault) = fresh_vault();
+        let token = vault.unlock(PWD).unwrap();
+        let id = add_fake_key(&vault, token, "fake-openai-smoke", "fake-codex");
+        let audit_path = dir.path().join("audit").join("fetch-events.jsonl");
+        let audit = AuditLogger::new(&audit_path);
+
+        let secret = vault
+            .fetch_key_for_agent(token, "codex", id, &codex_fake_profiles(), &audit)
+            .unwrap();
+        assert_eq!(secret.expose_secret(), "sk-test-fake-agent-runtime-000000");
+
+        let audit_text = std::fs::read_to_string(audit_path).unwrap();
+        assert!(audit_text.contains("\"agent_id\":\"codex\""));
+        assert!(audit_text.contains("\"outcome\":\"allowed\""));
+        assert!(audit_text.contains("\"label\":\"fake-openai-smoke\""));
+        assert!(
+            !audit_text.contains("sk-test-fake-agent-runtime"),
+            "audit log must not contain plaintext key"
+        );
+    }
+
+    #[test]
+    fn fetch_key_for_agent_denies_wrong_agent_and_audits_without_decrypting() {
+        let (dir, vault) = fresh_vault();
+        let token = vault.unlock(PWD).unwrap();
+        let id = add_fake_key(&vault, token, "fake-openai-smoke", "fake-codex");
+        let audit_path = dir.path().join("audit").join("fetch-events.jsonl");
+        let audit = AuditLogger::new(&audit_path);
+
+        let err = vault
+            .fetch_key_for_agent(token, "aliza", id, &codex_fake_profiles(), &audit)
+            .unwrap_err();
+        assert!(matches!(err, VaultError::AccessDenied));
+
+        let audit_text = std::fs::read_to_string(audit_path).unwrap();
+        assert!(audit_text.contains("\"agent_id\":\"aliza\""));
+        assert!(audit_text.contains("\"outcome\":\"denied\""));
+        assert!(audit_text.contains("agent_profile_denied"));
+        assert!(
+            !audit_text.contains("sk-test-fake-agent-runtime"),
+            "denied audit log must not contain plaintext key"
+        );
     }
 
     #[test]
