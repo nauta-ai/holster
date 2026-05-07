@@ -10,7 +10,7 @@
   let activePath = $state<'buying' | 'starting' | 'workstation'>('buying');
   let audienceMode = $state<'personal' | 'business'>('personal');
   let activeLesson = $state(0);
-  let startupStep = $state<'chooser' | 'beginner' | 'guidedSignup' | 'oldComputer' | 'buyingSystem' | 'full'>('full');
+  let startupStep = $state<'chooser' | 'beginner' | 'guidedSignup' | 'businessRollout' | 'oldComputer' | 'buyingSystem' | 'full'>('full');
   let startupInitialized = $state(false);
   let selectedSubscription = $state<'chatgpt' | 'claude' | 'gemini'>('chatgpt');
   let copiedPrompt = $state<string | null>(null);
@@ -20,6 +20,13 @@
     security: false,
     recovery: false,
     noApi: false
+  });
+  let businessChecklist = $state({
+    owner: false,
+    tools: false,
+    security: false,
+    dataRules: false,
+    noStaffApi: false
   });
 
   const startingLessons = [
@@ -191,6 +198,12 @@
       label: 'Know what I want',
       title: 'I am buying a system for AI',
       copy: 'Use a clear checklist so the purchase matches your actual AI workload.'
+    },
+    {
+      id: 'business',
+      label: 'Business or team',
+      title: 'Set up AI for a small team',
+      copy: 'Approve tools, billing, account safety, and file rules before everyone starts experimenting.'
     }
   ] as const;
 
@@ -236,6 +249,7 @@
       prompt: 'Explain AI subscriptions, API billing, local AI, and agents like I am brand new. Tell me what to avoid for now.'
     }
   ];
+  const businessRolloutPrompt = 'I own or manage a small business and want my team to start using AI safely. Ask me seven questions about our work, client data, staff roles, and budget. Then recommend a simple approved AI tool list, billing owner, 2FA rules, file sharing rules, and what staff should not do yet. Do not recommend staff API keys.';
 
   const visibleSteps = $derived(activePath === 'starting' ? startingLessons : workstationSteps);
   const currentSubscription = $derived(
@@ -247,6 +261,13 @@
       && signupChecklist.security
       && signupChecklist.recovery
       && signupChecklist.noApi
+  );
+  const businessReadyToPark = $derived(
+    businessChecklist.owner
+      && businessChecklist.tools
+      && businessChecklist.security
+      && businessChecklist.dataRules
+      && businessChecklist.noStaffApi
   );
   const currentLesson = $derived(startingLessons[activeLesson]);
   const pathLabel = $derived(activePath === 'buying'
@@ -276,11 +297,17 @@
     if (path === 'starting') activeLesson = 0;
   }
 
-  function chooseStartup(step: 'beginner' | 'oldComputer' | 'buyingSystem') {
-    startupStep = step;
+  function chooseStartup(step: 'beginner' | 'oldComputer' | 'buyingSystem' | 'business') {
     if (step === 'beginner') setPath('starting');
     if (step === 'oldComputer') setPath('buying');
     if (step === 'buyingSystem') setPath('workstation');
+    if (step === 'business') {
+      audienceMode = 'business';
+      setPath('buying');
+      startupStep = 'businessRollout';
+      return;
+    }
+    startupStep = step;
   }
 
   function finishStartup() {
@@ -540,6 +567,78 @@
           </div>
           <div class="startup-actions">
             <button type="button" class="ghost" onclick={() => (startupStep = 'beginner')}>Back</button>
+            <button type="button" class="primary" onclick={finishStartup}>Done with startup</button>
+          </div>
+        </section>
+      {:else if startupStep === 'businessRollout'}
+        <section class="startup-focus" aria-label="Business AI rollout">
+          <span>Business setup</span>
+          <h3>Approve the AI starting line before the team scatters.</h3>
+          <p>
+            Buildbelt helps the owner pick approved tools, name who owns billing,
+            require account security, and pause staff before API keys or client-file handoffs.
+          </p>
+          <div class="choice-guide" aria-label="Business rollout rules">
+            <article>
+              <strong>Approve tools first</strong>
+              <p>Pick one or two official AI apps the team may use, and write down what each is for.</p>
+            </article>
+            <article>
+              <strong>Name the owner</strong>
+              <p>Choose who controls billing, admin access, recovery codes, and employee offboarding.</p>
+            </article>
+            <article>
+              <strong>Protect client work</strong>
+              <p>Decide what files, contracts, customer data, and private notes cannot be pasted into AI.</p>
+            </article>
+          </div>
+          <div class="first-prompt-card" aria-label="Business rollout prompt">
+            <span>Owner prompt</span>
+            <strong>Use AI to draft the team starting policy.</strong>
+            <p>{businessRolloutPrompt}</p>
+            <button type="button" class="ghost prompt-copy" onclick={() => copyPrompt('business', businessRolloutPrompt)}>
+              {copiedPrompt === 'business' ? 'Copied' : 'Copy prompt'}
+            </button>
+          </div>
+          <div class="startup-checklist" aria-label="Business rollout checklist">
+            <strong>Team park checklist</strong>
+            <label>
+              <input type="checkbox" bind:checked={businessChecklist.owner} />
+              <span>Billing and account owner named</span>
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={businessChecklist.tools} />
+              <span>Approved AI tools chosen for the team</span>
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={businessChecklist.security} />
+              <span>2FA or passkeys required for every user</span>
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={businessChecklist.dataRules} />
+              <span>Client-file and private-data rules written down</span>
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={businessChecklist.noStaffApi} />
+              <span>No staff API keys or unattended agents yet</span>
+            </label>
+          </div>
+          {#if businessReadyToPark}
+            <div class="startup-parked" aria-label="Business rollout parked">
+              <strong>The team has a safe starting line.</strong>
+              <p>Let staff use the approved app for normal work first. Bring Buildbelt back when a repeated workflow needs keys, agents, or file handoff.</p>
+            </div>
+          {/if}
+          <div class="startup-hold">
+            <strong>Stop point</strong>
+            <p>
+              Do not create shared API keys, connect client folders, or let agents run
+              until the team has one proven workflow and an owner watching cost and access.
+            </p>
+          </div>
+          <div class="startup-actions">
+            <button type="button" class="ghost" onclick={() => (startupStep = 'chooser')}>Back</button>
+            <button type="button" class="ghost" onclick={showFullGuide}>Show full business guide</button>
             <button type="button" class="primary" onclick={finishStartup}>Done with startup</button>
           </div>
         </section>
