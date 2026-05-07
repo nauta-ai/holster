@@ -872,7 +872,7 @@ button.module-item {
 }
 .buildbelt-paths {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   padding: 18px 24px 12px;
 }
@@ -918,9 +918,13 @@ button.module-item {
   gap: 12px;
   padding: 0 24px 18px;
 }
+.buildbelt-buying {
+  padding: 0 24px 18px;
+}
 .buildbelt-checklist,
 .buildbelt-lesson-nav,
 .buildbelt-lesson-card,
+.buying-guide,
 .buildbelt-side article {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -928,7 +932,8 @@ button.module-item {
 }
 .buildbelt-checklist,
 .buildbelt-lesson-nav,
-.buildbelt-lesson-card {
+.buildbelt-lesson-card,
+.buying-guide {
   padding: 14px;
 }
 .buildbelt-checklist ol {
@@ -1058,6 +1063,66 @@ button.module-item {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
+}
+.buying-verdict {
+  padding: 16px;
+  border: 1px solid rgba(106, 212, 138, 0.36);
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba(106, 212, 138, 0.12), transparent 70%),
+    var(--bg-input);
+}
+.buying-verdict span,
+.buying-decisions dt {
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.buying-verdict strong {
+  display: block;
+  margin: 8px 0 6px;
+  font-size: 24px;
+  line-height: 1.08;
+}
+.buying-verdict p {
+  max-width: 840px;
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 14px;
+}
+.buying-decisions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.buying-decisions section {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-input);
+}
+.buying-decisions h4 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  line-height: 1.15;
+}
+.buying-decisions dl,
+.buying-decisions dd {
+  margin: 0;
+}
+.buying-decisions dl {
+  display: grid;
+  gap: 10px;
+}
+.buying-decisions dd {
+  margin-top: 3px;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.4;
 }
 .buildbelt-side {
   display: grid;
@@ -1275,7 +1340,8 @@ button.module-item {
   .doctor-summary,
   .doctor-report-grid,
   .risk-ladder,
-  .buildbelt-paths {
+  .buildbelt-paths,
+  .buying-decisions {
     grid-template-columns: 1fr;
   }
 }
@@ -1418,6 +1484,7 @@ button.module-item {
   .buildbelt-paths,
   .buildbelt-content,
   .buildbelt-walkthrough,
+  .buildbelt-buying,
   .doctor-summary,
   .doctor-report-grid {
     padding-left: 20px;

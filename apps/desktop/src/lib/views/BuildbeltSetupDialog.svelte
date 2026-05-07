@@ -5,7 +5,7 @@
   }
 
   let { onClose, onOpenDoctor }: Props = $props();
-  let activePath = $state<'starting' | 'workstation'>('starting');
+  let activePath = $state<'buying' | 'starting' | 'workstation'>('buying');
   let activeLesson = $state(0);
 
   const startingLessons = [
@@ -69,10 +69,37 @@
     }
   ];
 
+  const buyingDecisions = [
+    {
+      title: 'Use the computer you have',
+      signal: 'You are still learning prompts, writing, planning, research, images, or basic automation.',
+      recommendation: 'Start with a browser-based subscription. Your old laptop is enough for the first useful month.',
+      wait: 'Wait on a new AI computer until a repeated workflow is blocked by speed, memory, storage, or local privacy needs.'
+    },
+    {
+      title: 'Buy a normal strong computer',
+      signal: 'You want a daily work machine for documents, browser tools, video calls, images, and light coding.',
+      recommendation: 'Prioritize RAM, storage, screen comfort, and warranty before chasing AI marketing.',
+      wait: 'Do not pay a premium for vague "AI PC" claims if your work will mainly happen in ChatGPT, Claude, Gemini, or web apps.'
+    },
+    {
+      title: 'Prepare for API tools',
+      signal: 'You have a tool, agent, or workflow that explicitly asks for provider keys.',
+      recommendation: 'Set budgets, turn on 2FA, create the smallest needed key, label it clearly, and store it in Holster.',
+      wait: 'Do not open API billing just because a tutorial says to. API means software can spend from your account.'
+    },
+    {
+      title: 'Consider a local AI workstation',
+      signal: 'You need privacy, local files, code agents, repeated automation, or model experiments that justify complexity.',
+      recommendation: 'Buy for the real workload: RAM, GPU, thermals, storage, backup, and support matter more than buzzwords.',
+      wait: 'Do not make this the first step. Graduate into local power after you know what you will run and why.'
+    }
+  ];
+
   const visibleSteps = $derived(activePath === 'starting' ? startingLessons : workstationSteps);
   const currentLesson = $derived(startingLessons[activeLesson]);
 
-  function setPath(path: 'starting' | 'workstation') {
+  function setPath(path: 'buying' | 'starting' | 'workstation') {
     activePath = path;
     if (path === 'starting') activeLesson = 0;
   }
@@ -114,8 +141,8 @@
         </div>
         <h2 id="buildbelt-title">Start your AI setup without the expensive mistakes.</h2>
         <p>
-          Buildbelt walks you from first AI curiosity to accounts, keys, cost
-          guardrails, safe project sharing, and local workstation readiness.
+          Buildbelt helps you choose the right first step before hardware,
+          API billing, keys, agent tools, or local workstation complexity.
         </p>
       </div>
       <div class="buildbelt-badge">
@@ -126,6 +153,15 @@
     </section>
 
     <section class="buildbelt-paths" aria-label="Buildbelt setup paths">
+      <button
+        type="button"
+        class:active={activePath === 'buying'}
+        onclick={() => setPath('buying')}
+      >
+        <span>Before I spend money</span>
+        <strong>Should I buy an AI computer?</strong>
+        <small>Decide whether to use what you have, subscribe first, prepare API tools, or buy hardware.</small>
+      </button>
       <button
         type="button"
         class:active={activePath === 'starting'}
@@ -146,8 +182,49 @@
       </button>
     </section>
 
-    <section class:buildbelt-content={activePath === 'workstation'} class:buildbelt-walkthrough={activePath === 'starting'}>
-      {#if activePath === 'starting'}
+    <section
+      class:buildbelt-content={activePath === 'workstation'}
+      class:buildbelt-walkthrough={activePath === 'starting'}
+      class:buildbelt-buying={activePath === 'buying'}
+    >
+      {#if activePath === 'buying'}
+        <article class="buying-guide">
+          <div class="panel-head">
+            <h3>Before you buy</h3>
+            <span>decision guide</span>
+          </div>
+          <div class="buying-verdict">
+            <span>Buildbelt recommendation</span>
+            <strong>Subscribe first. Buy later with a real workflow.</strong>
+            <p>
+              Most beginners do not need an expensive AI computer on day one.
+              They need one predictable AI month, account safety, and a clear reason
+              to graduate into APIs or local tools.
+            </p>
+          </div>
+          <div class="buying-decisions">
+            {#each buyingDecisions as item}
+              <section>
+                <h4>{item.title}</h4>
+                <dl>
+                  <div>
+                    <dt>Good fit when</dt>
+                    <dd>{item.signal}</dd>
+                  </div>
+                  <div>
+                    <dt>Do this</dt>
+                    <dd>{item.recommendation}</dd>
+                  </div>
+                  <div>
+                    <dt>Wait on this</dt>
+                    <dd>{item.wait}</dd>
+                  </div>
+                </dl>
+              </section>
+            {/each}
+          </div>
+        </article>
+      {:else if activePath === 'starting'}
         <article class="buildbelt-lesson-nav">
           <div class="panel-head">
             <h3>First $20 AI Month</h3>
