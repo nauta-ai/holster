@@ -238,8 +238,10 @@ label {
   width: 38px;
   height: 38px;
   border: 1px solid var(--accent);
-  border-radius: 8px;
-  background: var(--accent-soft);
+  border-radius: 10px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.2), transparent 48%),
+    var(--accent-soft);
   color: var(--accent);
   font-weight: 800;
   letter-spacing: 0;
@@ -815,6 +817,32 @@ button.module-item {
   color: var(--fg-muted);
   font-size: 14px;
 }
+.nauta-lockup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.nauta-lockup .eyebrow {
+  margin-bottom: 2px;
+}
+.nauta-lockup span {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+.nauta-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(106, 212, 138, 0.38);
+  border-radius: 10px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.28), transparent 50%),
+    rgba(106, 212, 138, 0.1);
+  color: var(--success);
+  font-weight: 850;
+}
 .buildbelt-badge {
   display: grid;
   align-content: center;
@@ -884,13 +912,23 @@ button.module-item {
   gap: 12px;
   padding: 0 24px 18px;
 }
+.buildbelt-walkthrough {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr) 280px;
+  gap: 12px;
+  padding: 0 24px 18px;
+}
 .buildbelt-checklist,
+.buildbelt-lesson-nav,
+.buildbelt-lesson-card,
 .buildbelt-side article {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-panel);
 }
-.buildbelt-checklist {
+.buildbelt-checklist,
+.buildbelt-lesson-nav,
+.buildbelt-lesson-card {
   padding: 14px;
 }
 .buildbelt-checklist ol {
@@ -908,11 +946,118 @@ button.module-item {
   margin-bottom: 4px;
 }
 .buildbelt-checklist p,
+.buildbelt-lesson-card p,
+.buildbelt-lesson-nav small,
 .buildbelt-side p,
 .buildbelt-footer p {
   margin: 0;
   color: var(--fg-muted);
   font-size: 13px;
+}
+.lesson-list {
+  display: grid;
+  gap: 8px;
+}
+.lesson-list button {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 3px 10px;
+  min-height: 74px;
+  padding: 10px;
+  text-align: left;
+  background: var(--bg-input);
+}
+.lesson-list button.active {
+  border-color: rgba(106, 212, 138, 0.5);
+  background:
+    linear-gradient(135deg, rgba(106, 212, 138, 0.12), transparent 70%),
+    var(--bg-input);
+}
+.lesson-list button > span {
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(106, 212, 138, 0.36);
+  border-radius: 999px;
+  color: var(--success);
+  font-size: 12px;
+  font-weight: 800;
+}
+.lesson-list strong {
+  min-width: 0;
+  line-height: 1.2;
+}
+.lesson-list small {
+  min-width: 0;
+  line-height: 1.35;
+}
+.lesson-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.lesson-progress span,
+.lesson-detail-grid span {
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.lesson-progress div {
+  display: flex;
+  gap: 5px;
+}
+.lesson-progress i {
+  display: block;
+  width: 26px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--border);
+}
+.lesson-progress i.active {
+  background: var(--success);
+}
+.buildbelt-lesson-card h3 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.1;
+}
+.lesson-lead {
+  margin-top: 8px !important;
+  max-width: 620px;
+  font-size: 14px !important;
+}
+.lesson-detail-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+.lesson-detail-grid section {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+}
+.lesson-detail-grid p {
+  margin-top: 7px;
+  line-height: 1.45;
+}
+.lesson-warning {
+  border-color: rgba(241, 184, 91, 0.42) !important;
+  background:
+    linear-gradient(135deg, var(--accent-soft), transparent 72%),
+    var(--bg-input) !important;
+}
+.lesson-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
 }
 .buildbelt-side {
   display: grid;
@@ -1117,7 +1262,8 @@ button.module-item {
   .doctor-hero,
   .buildbelt-banner,
   .buildbelt-hero,
-  .buildbelt-content {
+  .buildbelt-content,
+  .buildbelt-walkthrough {
     grid-template-columns: 1fr;
   }
   .doctor-banner,
@@ -1271,10 +1417,37 @@ button.module-item {
 
   .buildbelt-paths,
   .buildbelt-content,
+  .buildbelt-walkthrough,
   .doctor-summary,
   .doctor-report-grid {
     padding-left: 20px;
     padding-right: 20px;
+  }
+
+  .lesson-list button {
+    min-height: auto;
+  }
+
+  .lesson-progress {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .lesson-progress div {
+    width: 100%;
+  }
+
+  .lesson-progress i {
+    flex: 1;
+  }
+
+  .lesson-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .lesson-actions button {
+    min-height: 38px;
   }
 
   .buildbelt-footer {

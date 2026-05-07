@@ -6,27 +6,43 @@
 
   let { onClose, onOpenDoctor }: Props = $props();
   let activePath = $state<'starting' | 'workstation'>('starting');
+  let activeLesson = $state(0);
 
-  const startingSteps = [
+  const startingLessons = [
     {
       title: 'Try one subscription first',
-      copy: 'Use a predictable monthly AI subscription for real tasks before buying hardware or opening API billing.'
+      copy: 'Use a predictable monthly AI subscription for real tasks before buying hardware or opening API billing.',
+      means: 'A subscription is the safest first lane because the cost is predictable and the tool is made for a person sitting at the computer.',
+      action: 'Pick one main assistant, use it daily for writing, planning, research, files, or images, and write down where it actually saves time.',
+      hold: 'Do not buy an AI computer, open multiple paid accounts, or install agent tools until you know what job you want AI to do.'
     },
     {
       title: 'Understand subscription vs API',
-      copy: 'Subscriptions are for humans using an app. APIs are for software and agents, and they can spend per call.'
+      copy: 'Subscriptions are for humans using an app. APIs are for software and agents, and they can spend per call.',
+      means: 'An API lets software talk to an AI model directly. That is powerful, but it usually charges by usage instead of one flat monthly fee.',
+      action: 'Learn this sentence first: subscription means I use the app; API means software spends from my account.',
+      hold: 'Do not paste API keys into random tools or let an agent run unattended while you are still learning what usage costs.'
     },
     {
       title: 'Do not create keys too early',
-      copy: 'An API key is a billing key. Create one only when a tool or workflow truly needs software access.'
+      copy: 'An API key is a billing key. Create one only when a tool or workflow truly needs software access.',
+      means: 'A key is not just a password. It can give a tool permission to spend money from your AI billing account.',
+      action: 'When a tool asks for a key, pause and ask what provider, what budget, what job, and where the key will be stored.',
+      hold: 'Do not save keys in notes, screenshots, chats, repo files, email, or shared folders.'
     },
     {
       title: 'Watch for unattended agents',
-      copy: 'Agents can loop or keep working. Learn the cost model before you let anything run on metered billing.'
+      copy: 'Agents can loop or keep working. Learn the cost model before you let anything run on metered billing.',
+      means: 'Agents can call models many times in the background. A small mistake can become real usage before you notice.',
+      action: 'Start with short, visible sessions. Stop the run when the job is unclear, and check billing after experiments.',
+      hold: 'Do not leave agents running overnight, connect them to sensitive folders, or give them broad write access during your first month.'
     },
     {
       title: 'Graduate when there is a real workflow',
-      copy: 'Move from subscription to API to local workstation only when a repeated job justifies the complexity.'
+      copy: 'Move from subscription to API to local workstation only when a repeated job justifies the complexity.',
+      means: 'The upgrade path is not more tools. It is a repeated task worth protecting, automating, or running locally.',
+      action: 'Choose one workflow worth improving, then use Buildbelt/Holster to add account safety, key storage, and Safe Share checks.',
+      hold: 'Do not chase every model, extension, or local install before your first useful workflow is obvious.'
     }
   ];
 
@@ -53,7 +69,21 @@
     }
   ];
 
-  const visibleSteps = $derived(activePath === 'starting' ? startingSteps : workstationSteps);
+  const visibleSteps = $derived(activePath === 'starting' ? startingLessons : workstationSteps);
+  const currentLesson = $derived(startingLessons[activeLesson]);
+
+  function setPath(path: 'starting' | 'workstation') {
+    activePath = path;
+    if (path === 'starting') activeLesson = 0;
+  }
+
+  function nextLesson() {
+    activeLesson = Math.min(activeLesson + 1, startingLessons.length - 1);
+  }
+
+  function previousLesson() {
+    activeLesson = Math.max(activeLesson - 1, 0);
+  }
 
   function onBackdropClick(e: MouseEvent) {
     if (e.target === e.currentTarget) onClose();
@@ -75,7 +105,13 @@
   <div class="modal buildbelt-modal" role="dialog" aria-modal="true" aria-labelledby="buildbelt-title">
     <section class="buildbelt-hero">
       <div>
-        <p class="eyebrow">Buildbelt by NautaAI</p>
+        <div class="nauta-lockup" aria-label="NautaAI">
+          <div class="nauta-mark">N</div>
+          <div>
+            <p class="eyebrow">Buildbelt by NautaAI</p>
+            <span>Local AI setup companion</span>
+          </div>
+        </div>
         <h2 id="buildbelt-title">Start your AI setup without the expensive mistakes.</h2>
         <p>
           Buildbelt walks you from first AI curiosity to accounts, keys, cost
@@ -93,7 +129,7 @@
       <button
         type="button"
         class:active={activePath === 'starting'}
-        onclick={() => (activePath = 'starting')}
+        onclick={() => setPath('starting')}
       >
         <span>I am just getting started</span>
         <strong>First $20 AI Month</strong>
@@ -102,7 +138,7 @@
       <button
         type="button"
         class:active={activePath === 'workstation'}
-        onclick={() => (activePath = 'workstation')}
+        onclick={() => setPath('workstation')}
       >
         <span>I already have an AI computer</span>
         <strong>Workstation setup</strong>
@@ -110,21 +146,80 @@
       </button>
     </section>
 
-    <section class="buildbelt-content">
-      <article class="buildbelt-checklist">
-        <div class="panel-head">
-          <h3>{activePath === 'starting' ? 'Beginner path' : 'Workstation path'}</h3>
-          <span>{visibleSteps.length} steps</span>
-        </div>
-        <ol>
-          {#each visibleSteps as step}
-            <li>
-              <strong>{step.title}</strong>
-              <p>{step.copy}</p>
-            </li>
-          {/each}
-        </ol>
-      </article>
+    <section class:buildbelt-content={activePath === 'workstation'} class:buildbelt-walkthrough={activePath === 'starting'}>
+      {#if activePath === 'starting'}
+        <article class="buildbelt-lesson-nav">
+          <div class="panel-head">
+            <h3>First $20 AI Month</h3>
+            <span>{startingLessons.length} lessons</span>
+          </div>
+          <div class="lesson-list" role="list">
+            {#each startingLessons as step, index}
+              <button
+                type="button"
+                class:active={activeLesson === index}
+                onclick={() => (activeLesson = index)}
+              >
+                <span>{index + 1}</span>
+                <strong>{step.title}</strong>
+                <small>{step.copy}</small>
+              </button>
+            {/each}
+          </div>
+        </article>
+
+        <article class="buildbelt-lesson-card">
+          <div class="lesson-progress">
+            <span>Lesson {activeLesson + 1} of {startingLessons.length}</span>
+            <div aria-hidden="true">
+              {#each startingLessons as _, index}
+                <i class:active={index <= activeLesson}></i>
+              {/each}
+            </div>
+          </div>
+          <h3>{currentLesson.title}</h3>
+          <p class="lesson-lead">{currentLesson.copy}</p>
+
+          <div class="lesson-detail-grid">
+            <section>
+              <span>What this means</span>
+              <p>{currentLesson.means}</p>
+            </section>
+            <section>
+              <span>Do this now</span>
+              <p>{currentLesson.action}</p>
+            </section>
+            <section class="lesson-warning">
+              <span>Do not do yet</span>
+              <p>{currentLesson.hold}</p>
+            </section>
+          </div>
+
+          <div class="lesson-actions">
+            <button type="button" class="ghost" onclick={previousLesson} disabled={activeLesson === 0}>Back</button>
+            {#if activeLesson < startingLessons.length - 1}
+              <button type="button" class="primary" onclick={nextLesson}>Next lesson</button>
+            {:else}
+              <button type="button" class="primary" onclick={() => setPath('workstation')}>Show workstation setup</button>
+            {/if}
+          </div>
+        </article>
+      {:else}
+        <article class="buildbelt-checklist">
+          <div class="panel-head">
+            <h3>Workstation path</h3>
+            <span>{visibleSteps.length} steps</span>
+          </div>
+          <ol>
+            {#each visibleSteps as step}
+              <li>
+                <strong>{step.title}</strong>
+                <p>{step.copy}</p>
+              </li>
+            {/each}
+          </ol>
+        </article>
+      {/if}
 
       <aside class="buildbelt-side">
         <article>

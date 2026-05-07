@@ -118,10 +118,10 @@
 <div class="app-shell">
   <aside class="side-rail" aria-label="Holster modules">
     <div class="brand-block">
-      <div class="brand-mark">H</div>
+      <div class="brand-mark">N</div>
       <div>
         <div class="brand">Buildbelt</div>
-        <div class="brand-subtitle">Holster safety engine</div>
+        <div class="brand-subtitle">by NautaAI</div>
       </div>
     </div>
 
