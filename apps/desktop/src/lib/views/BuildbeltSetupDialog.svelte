@@ -224,10 +224,27 @@
           API billing, keys, agent tools, or local workstation complexity.
         </p>
       </div>
-      <div class="buildbelt-badge">
-        <span>Holster inside</span>
-        <strong>Local</strong>
-        <small>vault + safety checks</small>
+      <div class="local-status-card" aria-label="Local trust status">
+        <div class="status-ring" aria-hidden="true">N</div>
+        <div>
+          <span>Local trust</span>
+          <strong>Protected on this machine</strong>
+          <p>Holster keeps keys and handoff checks behind the local vault boundary.</p>
+        </div>
+        <dl>
+          <div>
+            <dt>Cloud sync</dt>
+            <dd>Off</dd>
+          </div>
+          <div>
+            <dt>Vault</dt>
+            <dd>Local</dd>
+          </div>
+          <div>
+            <dt>Handoff</dt>
+            <dd>Scan first</dd>
+          </div>
+        </dl>
       </div>
     </section>
 
