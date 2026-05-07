@@ -17,3 +17,20 @@ apps/desktop/src-tauri/gen/
 logs/
 .vscode/
 .idea/
+
+# Local/generated agent outputs. Archive useful outputs in the vault instead
+# of committing them to the product repo.
+.codex-artifacts/
+.codex-staging/
+automation-artifacts/
+automation-output/
+automation-outputs/
+automation-staging/
+automation_artifacts/
+customer-acquisition-artifacts/
+customer-acquisition-execution-sweep-outputs/
+marketing-artifacts/
+marketing-backlog-staging/
+overnight_research_outbox/
+tmp/
+20*-holster-*.md
