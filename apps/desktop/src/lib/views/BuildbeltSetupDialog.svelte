@@ -35,6 +35,15 @@
     storage: false,
     subscription: false
   });
+  let buyingSystemChecklist = $state({
+    workload: false,
+    browserFirst: false,
+    security: false,
+    specs: false,
+    noApi: false
+  });
+
+  const startupProgressKey = 'buildbeltStartupProgress';
 
   const startingLessons = [
     {
@@ -191,8 +200,8 @@
     {
       id: 'beginner',
       label: 'New person',
-      title: 'Start here with the $20 plan',
-      copy: 'Try one simple AI subscription first. No API keys. No new computer. No agent tools yet.'
+      title: 'Start free, upgrade only if useful',
+      copy: 'Try one official AI app first. No API keys. No new computer. No agent tools yet.'
     },
     {
       id: 'oldComputer',
@@ -258,6 +267,7 @@
   ];
   const businessRolloutPrompt = 'I own or manage a small business and want my team to start using AI safely. Ask me seven questions about our work, client data, staff roles, and budget. Then recommend a simple approved AI tool list, billing owner, 2FA rules, file sharing rules, and what staff should not do yet. Do not recommend staff API keys.';
   const oldComputerPrompt = 'I have an older computer and I want to start using AI without wasting money. Ask me what operating system I have, how old the computer is, how much RAM and storage it has, what browser I use, and what I want AI to help with. Then tell me if I should start with browser AI tools, what to update first, what not to install yet, and when a new computer would actually be worth buying.';
+  const buyingSystemPrompt = 'I am thinking about buying a computer for AI. Ask me what I want AI to do: writing, documents, coding, image work, video work, local models, business automation, or agents. Then tell me whether I should keep using browser AI, buy a normal strong computer, or consider a local AI workstation. Explain the tradeoffs in plain English and do not recommend API keys until there is a real workflow.';
 
   const visibleSteps = $derived(activePath === 'starting' ? startingLessons : workstationSteps);
   const currentSubscription = $derived(
@@ -284,6 +294,13 @@
       && oldComputerChecklist.storage
       && oldComputerChecklist.subscription
   );
+  const buyingSystemReadyToPark = $derived(
+    buyingSystemChecklist.workload
+      && buyingSystemChecklist.browserFirst
+      && buyingSystemChecklist.security
+      && buyingSystemChecklist.specs
+      && buyingSystemChecklist.noApi
+  );
   const currentLesson = $derived(startingLessons[activeLesson]);
   const pathLabel = $derived(activePath === 'buying'
     ? 'Pre-purchase'
@@ -303,8 +320,18 @@
 
   $effect(() => {
     if (startupInitialized) return;
-    startupStep = startupMode ? 'chooser' : 'full';
+    loadStartupProgress();
+    if (startupMode) {
+      if (startupStep === 'full') startupStep = 'chooser';
+    } else {
+      startupStep = 'full';
+    }
     startupInitialized = true;
+  });
+
+  $effect(() => {
+    if (!startupInitialized) return;
+    saveStartupProgress();
   });
 
   function setPath(path: 'buying' | 'starting' | 'workstation') {
@@ -333,6 +360,85 @@
     }
     onStartupDone?.();
     onClose();
+  }
+
+  function resetStartupProgress() {
+    signupChecklist = {
+      account: false,
+      firstPrompt: false,
+      security: false,
+      recovery: false,
+      noApi: false
+    };
+    businessChecklist = {
+      owner: false,
+      tools: false,
+      security: false,
+      dataRules: false,
+      noStaffApi: false
+    };
+    oldComputerChecklist = {
+      updated: false,
+      browser: false,
+      security: false,
+      storage: false,
+      subscription: false
+    };
+    buyingSystemChecklist = {
+      workload: false,
+      browserFirst: false,
+      security: false,
+      specs: false,
+      noApi: false
+    };
+    selectedSubscription = 'chatgpt';
+    startupStep = 'chooser';
+    try {
+      localStorage.removeItem('buildbeltStartupComplete');
+      localStorage.removeItem(startupProgressKey);
+    } catch {
+      // Reset still works for this session if local storage is unavailable.
+    }
+  }
+
+  function loadStartupProgress() {
+    try {
+      const raw = localStorage.getItem(startupProgressKey);
+      if (!raw) return;
+      const progress = JSON.parse(raw);
+      if (isStartupStep(progress.startupStep)) startupStep = progress.startupStep;
+      if (progress.selectedSubscription) selectedSubscription = progress.selectedSubscription;
+      if (progress.signupChecklist) signupChecklist = { ...signupChecklist, ...progress.signupChecklist };
+      if (progress.businessChecklist) businessChecklist = { ...businessChecklist, ...progress.businessChecklist };
+      if (progress.oldComputerChecklist) oldComputerChecklist = { ...oldComputerChecklist, ...progress.oldComputerChecklist };
+      if (progress.buyingSystemChecklist) buyingSystemChecklist = { ...buyingSystemChecklist, ...progress.buyingSystemChecklist };
+    } catch {
+      // Corrupt or unavailable startup progress should not block the guide.
+    }
+  }
+
+  function saveStartupProgress() {
+    try {
+      localStorage.setItem(startupProgressKey, JSON.stringify({
+        startupStep,
+        selectedSubscription,
+        signupChecklist,
+        businessChecklist,
+        oldComputerChecklist,
+        buyingSystemChecklist
+      }));
+    } catch {
+      // The guide remains usable without persistence.
+    }
+  }
+
+  function isStartupStep(value: unknown): value is typeof startupStep {
+    return value === 'chooser'
+      || value === 'beginner'
+      || value === 'guidedSignup'
+      || value === 'businessRollout'
+      || value === 'oldComputer'
+      || value === 'buyingSystem';
   }
 
   function showFullGuide() {
@@ -447,10 +553,10 @@
       {:else if startupStep === 'beginner'}
         <section class="startup-focus" aria-label="Beginner startup">
           <span>Start here</span>
-          <h3>Try one $20 AI plan first.</h3>
+          <h3>Try one official AI app first.</h3>
           <p>
-            Use one simple subscription for a month before API keys, agents, local tools,
-            or a new computer. Your goal is to find one real task AI helps with.
+            Start free if that works. Upgrade only when the limits get in the way.
+            Your goal is to find one real task AI helps with.
           </p>
           <div class="startup-focus-grid">
             <article>
@@ -544,7 +650,7 @@
               </article>
             {/each}
           </div>
-          <div class="startup-checklist" aria-label="Guided signup checklist">
+          <div class="startup-checklist" aria-label="Guided signup checklist" onchange={saveStartupProgress}>
             <strong>Park here checklist</strong>
             <label>
               <input type="checkbox" bind:checked={signupChecklist.account} />
@@ -615,7 +721,7 @@
               {copiedPrompt === 'business' ? 'Copied' : 'Copy prompt'}
             </button>
           </div>
-          <div class="startup-checklist" aria-label="Business rollout checklist">
+          <div class="startup-checklist" aria-label="Business rollout checklist" onchange={saveStartupProgress}>
             <strong>Team park checklist</strong>
             <label>
               <input type="checkbox" bind:checked={businessChecklist.owner} />
@@ -687,7 +793,7 @@
               {copiedPrompt === 'old-computer' ? 'Copied' : 'Copy prompt'}
             </button>
           </div>
-          <div class="startup-checklist" aria-label="Old computer checklist">
+          <div class="startup-checklist" aria-label="Old computer checklist" onchange={saveStartupProgress}>
             <strong>Old computer park checklist</strong>
             <label>
               <input type="checkbox" bind:checked={oldComputerChecklist.updated} />
@@ -734,22 +840,66 @@
           <span>Buying for AI</span>
           <h3>Buy for the workload, not the marketing.</h3>
           <p>
-            Decide what you need to run before choosing a system. Most web AI work
-            needs comfort, RAM, storage, warranty, and a safe account setup first.
+            Decide what you need AI to do before choosing a system. Most people should
+            prove the work in a browser app before buying hardware.
           </p>
-          <div class="startup-focus-grid">
+          <div class="choice-guide" aria-label="AI system buying rules">
             <article>
-              <strong>Ask first</strong>
-              <p>Will this run web tools, coding agents, image/video work, or local models?</p>
+              <strong>Browser AI is enough</strong>
+              <p>Writing, research, planning, documents, and light image work usually do not require a new AI computer.</p>
             </article>
             <article>
-              <strong>Protect first</strong>
-              <p>Set account rules, 2FA, billing ownership, and key storage before agents touch files.</p>
+              <strong>Buy normal strength</strong>
+              <p>If buying anyway, prioritize RAM, storage, comfort, warranty, backup, and support over vague AI branding.</p>
             </article>
             <article>
-              <strong>Run Doctor</strong>
-              <p>Use Safe Share before handoff when projects, keys, or client files enter the workflow.</p>
+              <strong>Workstation later</strong>
+              <p>Local models, coding agents, video work, and private automation need a clearer spec and budget.</p>
             </article>
+          </div>
+          <div class="first-prompt-card" aria-label="AI system buying prompt">
+            <span>Buying prompt</span>
+            <strong>Use AI to decide what kind of computer fits the work.</strong>
+            <p>{buyingSystemPrompt}</p>
+            <button type="button" class="ghost prompt-copy" onclick={() => copyPrompt('buying-system', buyingSystemPrompt)}>
+              {copiedPrompt === 'buying-system' ? 'Copied' : 'Copy prompt'}
+            </button>
+          </div>
+          <div class="startup-checklist" aria-label="AI system buying checklist" onchange={saveStartupProgress}>
+            <strong>Buying system park checklist</strong>
+            <label>
+              <input type="checkbox" bind:checked={buyingSystemChecklist.workload} />
+              <span>Main AI workload written down</span>
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={buyingSystemChecklist.browserFirst} />
+              <span>Browser AI tested before hardware spending</span>
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={buyingSystemChecklist.security} />
+              <span>Account security and billing owner handled first</span>
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={buyingSystemChecklist.specs} />
+              <span>RAM, storage, warranty, backup, and support needs written down</span>
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={buyingSystemChecklist.noApi} />
+              <span>No API keys, agents, or local model installs before the workflow is real</span>
+            </label>
+          </div>
+          {#if buyingSystemReadyToPark}
+            <div class="startup-parked" aria-label="AI system buying parked">
+              <strong>You have a buying plan, not a shopping impulse.</strong>
+              <p>Use the checklist to shop calmly. If browser AI is still enough, wait and let the workflow prove the purchase.</p>
+            </div>
+          {/if}
+          <div class="startup-hold">
+            <strong>Stop point</strong>
+            <p>
+              Do not buy an AI workstation until the user can name the workload,
+              the privacy need, the speed blocker, or the repeated automation it will run.
+            </p>
           </div>
           <div class="startup-actions">
             <button type="button" class="ghost" onclick={() => (startupStep = 'chooser')}>Back</button>
@@ -1021,9 +1171,8 @@
     <footer class="buildbelt-footer">
       <p>Buildbelt guides the setup. Holster protects the keys and project handoff.</p>
       <div>
-        {#if startupMode}
-          <button type="button" class="ghost" onclick={() => (startupStep = 'chooser')}>Startup</button>
-        {/if}
+        <button type="button" class="ghost" onclick={() => (startupStep = 'chooser')}>Startup</button>
+        <button type="button" class="ghost" onclick={resetStartupProgress}>Reset startup</button>
         <button type="button" class="ghost" onclick={onClose}>Close</button>
         <button type="button" class="primary" onclick={openDoctor}>Run Safe Share Doctor</button>
       </div>
