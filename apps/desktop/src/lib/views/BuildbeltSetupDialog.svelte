@@ -213,10 +213,20 @@
     }
   ] as const;
 
+  const comparePrompt = 'I am brand new to AI. Ask me five simple questions about what I want help with, then compare ChatGPT, Claude, and Gemini in plain English. Tell me which one I should start with, whether the free plan is enough, and when a paid personal subscription would make sense. Do not recommend API keys yet.';
   const starterPrompts = [
-    'Explain AI subscriptions, API billing, and local AI like I am brand new.',
-    'Ask me five questions about my work, then suggest three useful ways I can use AI this week.',
-    'Help me write one email, plan one task, and summarize one document so I can see what AI is good at.'
+    {
+      label: 'Find my use cases',
+      prompt: 'Ask me five questions about my work and home life, then suggest three useful ways I can use AI this week.'
+    },
+    {
+      label: 'Try everyday help',
+      prompt: 'Help me write one email, plan one task, and summarize one document so I can see what AI is good at.'
+    },
+    {
+      label: 'Learn the basics',
+      prompt: 'Explain AI subscriptions, API billing, local AI, and agents like I am brand new. Tell me what to avoid for now.'
+    }
   ];
 
   const visibleSteps = $derived(activePath === 'starting' ? startingLessons : workstationSteps);
@@ -445,10 +455,18 @@
               Open official {currentSubscription.label} app
             </a>
           </div>
+          <div class="first-prompt-card" aria-label="First prompt">
+            <span>First prompt</span>
+            <strong>Use AI to help choose the right subscription.</strong>
+            <p>{comparePrompt}</p>
+          </div>
           <div class="prompt-starters" aria-label="Beginner prompt starters">
-            <strong>First prompts to try</strong>
-            {#each starterPrompts as prompt}
-              <p>{prompt}</p>
+            <strong>Beginner prompts to try next</strong>
+            {#each starterPrompts as item}
+              <article>
+                <span>{item.label}</span>
+                <p>{item.prompt}</p>
+              </article>
             {/each}
           </div>
           <div class="startup-hold">

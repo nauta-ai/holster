@@ -1109,34 +1109,57 @@ button.module-item {
   margin-top: 12px;
 }
 .choice-guide article,
-.prompt-starters {
+.prompt-starters,
+.first-prompt-card {
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-panel);
 }
 .choice-guide strong,
-.prompt-starters strong {
+.prompt-starters strong,
+.first-prompt-card strong {
   display: block;
   margin-bottom: 6px;
 }
 .choice-guide p,
-.prompt-starters p {
+.prompt-starters p,
+.first-prompt-card p {
   margin: 0;
   color: var(--fg-muted);
   font-size: 13px;
   line-height: 1.42;
+}
+.first-prompt-card {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  border-color: rgba(106, 212, 138, 0.28);
+  background: linear-gradient(135deg, rgba(106, 212, 138, 0.08), var(--bg-panel));
+}
+.first-prompt-card span,
+.prompt-starters article span {
+  color: var(--success);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.first-prompt-card p,
+.prompt-starters article p {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
 }
 .prompt-starters {
   display: grid;
   gap: 8px;
   margin-top: 12px;
 }
-.prompt-starters p {
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-elevated);
+.prompt-starters article {
+  display: grid;
+  gap: 6px;
 }
 .link-button {
   display: inline-flex;
