@@ -10,8 +10,9 @@
   let activePath = $state<'buying' | 'starting' | 'workstation'>('buying');
   let audienceMode = $state<'personal' | 'business'>('personal');
   let activeLesson = $state(0);
-  let startupStep = $state<'chooser' | 'beginner' | 'oldComputer' | 'buyingSystem' | 'full'>('full');
+  let startupStep = $state<'chooser' | 'beginner' | 'guidedSignup' | 'oldComputer' | 'buyingSystem' | 'full'>('full');
   let startupInitialized = $state(false);
+  let selectedSubscription = $state<'chatgpt' | 'claude' | 'gemini'>('chatgpt');
 
   const startingLessons = [
     {
@@ -185,7 +186,43 @@
     }
   ] as const;
 
+  const starterSubscriptions = [
+    {
+      id: 'chatgpt',
+      label: 'ChatGPT',
+      plan: 'Official app account',
+      link: 'https://chatgpt.com/',
+      bestFor: 'Best first pick for most new users.',
+      why: 'Writing, planning, research, files, images, and everyday help in one familiar place.'
+    },
+    {
+      id: 'claude',
+      label: 'Claude',
+      plan: 'Official app account',
+      link: 'https://claude.ai/',
+      bestFor: 'Great for long documents and thoughtful writing.',
+      why: 'Strong for reading, editing, strategy, and work that needs careful tone.'
+    },
+    {
+      id: 'gemini',
+      label: 'Gemini',
+      plan: 'Official app account',
+      link: 'https://gemini.google.com/',
+      bestFor: 'Useful if they already live in Google.',
+      why: 'A comfortable path for Gmail, Docs, Drive, Android, and Google account users.'
+    }
+  ] as const;
+
+  const starterPrompts = [
+    'Explain AI subscriptions, API billing, and local AI like I am brand new.',
+    'Ask me five questions about my work, then suggest three useful ways I can use AI this week.',
+    'Help me write one email, plan one task, and summarize one document so I can see what AI is good at.'
+  ];
+
   const visibleSteps = $derived(activePath === 'starting' ? startingLessons : workstationSteps);
+  const currentSubscription = $derived(
+    starterSubscriptions.find((subscription) => subscription.id === selectedSubscription) ?? starterSubscriptions[0]
+  );
   const currentLesson = $derived(startingLessons[activeLesson]);
   const pathLabel = $derived(activePath === 'buying'
     ? 'Pre-purchase'
@@ -353,6 +390,76 @@
           <div class="startup-actions">
             <button type="button" class="ghost" onclick={() => (startupStep = 'chooser')}>Back</button>
             <button type="button" class="ghost" onclick={showFullGuide}>Show details</button>
+            <button type="button" class="primary" onclick={() => (startupStep = 'guidedSignup')}>Guide me through signup</button>
+          </div>
+        </section>
+      {:else if startupStep === 'guidedSignup'}
+        <section class="startup-focus" aria-label="Guided subscription signup">
+          <span>Guided signup</span>
+          <h3>Pick one official app, learn the basics, then stop.</h3>
+          <p>
+            Buildbelt opens the official app and keeps the checklist here. Start free
+            if that is enough, upgrade only when the user understands the goal.
+          </p>
+          <div class="subscription-picker" role="group" aria-label="Choose a first AI subscription">
+            {#each starterSubscriptions as subscription}
+              <button
+                type="button"
+                class:active={selectedSubscription === subscription.id}
+                onclick={() => (selectedSubscription = subscription.id)}
+              >
+                <span>{subscription.plan}</span>
+                <strong>{subscription.label}</strong>
+                <small>{subscription.bestFor}</small>
+              </button>
+            {/each}
+          </div>
+          <div class="choice-guide" aria-label="What to choose">
+            <article>
+              <strong>Start free</strong>
+              <p>Create the account, try real tasks, and learn the interface before spending.</p>
+            </article>
+            <article>
+              <strong>Upgrade to paid personal</strong>
+              <p>Choose this when they use it daily or need higher limits, files, images, voice, or priority access.</p>
+            </article>
+            <article>
+              <strong>Do not choose API yet</strong>
+              <p>API and developer billing are for software tools. That comes later after a real workflow exists.</p>
+            </article>
+          </div>
+          <div class="guided-signup-card">
+            <div>
+              <span>Recommended next step</span>
+              <strong>{currentSubscription.label}</strong>
+              <p>{currentSubscription.why}</p>
+            </div>
+            <ol>
+              <li>Open the official site and create or sign in to the account.</li>
+              <li>Start free, or choose paid personal if the limits block the goal.</li>
+              <li>Turn on 2FA or passkeys before saving real work there.</li>
+              <li>Save recovery codes somewhere safe.</li>
+              <li>Try the starter prompts below, then park here. No API keys yet.</li>
+            </ol>
+            <a class="primary link-button" href={currentSubscription.link} target="_blank" rel="noreferrer">
+              Open official {currentSubscription.label} app
+            </a>
+          </div>
+          <div class="prompt-starters" aria-label="Beginner prompt starters">
+            <strong>First prompts to try</strong>
+            {#each starterPrompts as prompt}
+              <p>{prompt}</p>
+            {/each}
+          </div>
+          <div class="startup-hold">
+            <strong>Stop point</strong>
+            <p>
+              Use the app for a week on normal work. Do not create API keys,
+              install agents, buy hardware, or connect private folders until there is a real workflow.
+            </p>
+          </div>
+          <div class="startup-actions">
+            <button type="button" class="ghost" onclick={() => (startupStep = 'beginner')}>Back</button>
             <button type="button" class="primary" onclick={finishStartup}>Done with startup</button>
           </div>
         </section>

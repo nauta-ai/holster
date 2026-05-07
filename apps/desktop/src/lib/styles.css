@@ -1040,6 +1040,139 @@ button.module-item {
   gap: 8px;
   margin-top: 18px;
 }
+.subscription-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+.subscription-picker button {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  text-align: left;
+  background: var(--bg-panel);
+}
+.subscription-picker button.active {
+  border-color: rgba(106, 212, 138, 0.58);
+  box-shadow: 0 0 0 3px rgba(106, 212, 138, 0.12);
+}
+.subscription-picker span,
+.guided-signup-card span {
+  color: var(--success);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.subscription-picker strong {
+  font-size: 18px;
+}
+.subscription-picker small {
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.guided-signup-card {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid rgba(106, 212, 138, 0.25);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(106, 212, 138, 0.08), var(--bg-panel));
+}
+.guided-signup-card strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 22px;
+}
+.guided-signup-card p {
+  margin: 6px 0 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.guided-signup-card ol {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.choice-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.choice-guide article,
+.prompt-starters {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+.choice-guide strong,
+.prompt-starters strong {
+  display: block;
+  margin-bottom: 6px;
+}
+.choice-guide p,
+.prompt-starters p {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.42;
+}
+.prompt-starters {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.prompt-starters p {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+}
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #1a1a1f;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.link-button:hover {
+  background: var(--accent-muted);
+  border-color: var(--accent-muted);
+}
+.startup-hold {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(194, 127, 18, 0.08);
+}
+.startup-hold strong {
+  display: block;
+  margin-bottom: 4px;
+}
+.startup-hold p {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
 .buildbelt-mode {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1923,6 +2056,17 @@ button.module-item {
 
   .startup-actions button {
     min-height: 38px;
+  }
+
+  .subscription-picker,
+  .choice-guide,
+  .guided-signup-card {
+    grid-template-columns: 1fr;
+  }
+
+  .link-button {
+    width: 100%;
+    white-space: normal;
   }
 
   .doctor-hero,
