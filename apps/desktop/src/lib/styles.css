@@ -955,6 +955,83 @@ button.module-item {
   border-top: 1px solid var(--border);
   background: var(--bg-elevated);
 }
+.startup-wizard {
+  display: grid;
+  gap: 18px;
+  min-height: 420px;
+  padding: 32px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+.startup-wizard h3 {
+  max-width: 680px;
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.05;
+}
+.startup-wizard > p {
+  max-width: 660px;
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 17px;
+  line-height: 1.45;
+}
+.wizard-step-label {
+  color: var(--success);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.wizard-choice-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 6px;
+}
+.wizard-choice-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.wizard-choice-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.wizard-choice-grid button,
+.wizard-one-card {
+  display: grid;
+  gap: 8px;
+  min-height: 118px;
+  padding: 18px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+.wizard-choice-grid button.active {
+  border-color: rgba(106, 212, 138, 0.58);
+  box-shadow: 0 0 0 3px rgba(106, 212, 138, 0.12);
+}
+.wizard-choice-grid strong,
+.wizard-one-card strong {
+  font-size: 20px;
+}
+.wizard-choice-grid span,
+.wizard-one-card span {
+  color: var(--fg-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.wizard-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: auto;
+}
+.wizard-actions button,
+.wizard-link {
+  min-height: 40px;
+}
+.startup-parked.compact {
+  margin-top: 0;
+}
 .startup-copy {
   max-width: 620px;
 }
@@ -2107,6 +2184,35 @@ button.module-item {
   .startup-chooser,
   .startup-focus {
     padding: 18px 20px;
+  }
+
+  .startup-wizard {
+    min-height: 520px;
+    padding: 24px 20px;
+  }
+
+  .startup-wizard h3 {
+    font-size: 30px;
+  }
+
+  .startup-wizard > p {
+    font-size: 15px;
+  }
+
+  .wizard-choice-grid.two,
+  .wizard-choice-grid.three {
+    grid-template-columns: 1fr;
+  }
+
+  .wizard-choice-grid button,
+  .wizard-one-card {
+    min-height: auto;
+    padding: 16px;
+  }
+
+  .wizard-actions {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .startup-modal .buildbelt-hero {

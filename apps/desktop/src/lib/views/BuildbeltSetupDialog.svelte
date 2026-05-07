@@ -12,6 +12,8 @@
   let activeLesson = $state(0);
   let startupStep = $state<'chooser' | 'beginner' | 'guidedSignup' | 'businessRollout' | 'oldComputer' | 'buyingSystem' | 'full'>('full');
   let startupInitialized = $state(false);
+  let startupAudience = $state<'personal' | 'business' | null>(null);
+  let wizardStep = $state(0);
   let selectedSubscription = $state<'chatgpt' | 'claude' | 'gemini'>('chatgpt');
   let copiedPrompt = $state<string | null>(null);
   let signupChecklist = $state({
@@ -301,6 +303,8 @@
       && buyingSystemChecklist.specs
       && buyingSystemChecklist.noApi
   );
+  const wizardTotal = $derived(startupAudience === 'business' ? 5 : startupAudience === 'personal' ? 6 : 1);
+  const modelLabel = $derived(currentSubscription.label);
   const currentLesson = $derived(startingLessons[activeLesson]);
   const pathLabel = $derived(activePath === 'buying'
     ? 'Pre-purchase'
@@ -392,6 +396,8 @@
       noApi: false
     };
     selectedSubscription = 'chatgpt';
+    startupAudience = null;
+    wizardStep = 0;
     startupStep = 'chooser';
     try {
       localStorage.removeItem('buildbeltStartupComplete');
@@ -407,6 +413,8 @@
       if (!raw) return;
       const progress = JSON.parse(raw);
       if (isStartupStep(progress.startupStep)) startupStep = progress.startupStep;
+      if (progress.startupAudience === 'personal' || progress.startupAudience === 'business') startupAudience = progress.startupAudience;
+      if (Number.isInteger(progress.wizardStep)) wizardStep = Math.max(0, progress.wizardStep);
       if (progress.selectedSubscription) selectedSubscription = progress.selectedSubscription;
       if (progress.signupChecklist) signupChecklist = { ...signupChecklist, ...progress.signupChecklist };
       if (progress.businessChecklist) businessChecklist = { ...businessChecklist, ...progress.businessChecklist };
@@ -421,6 +429,8 @@
     try {
       localStorage.setItem(startupProgressKey, JSON.stringify({
         startupStep,
+        startupAudience,
+        wizardStep,
         selectedSubscription,
         signupChecklist,
         businessChecklist,
@@ -443,6 +453,26 @@
 
   function showFullGuide() {
     startupStep = 'full';
+  }
+
+  function chooseWizardAudience(audience: 'personal' | 'business') {
+    startupAudience = audience;
+    audienceMode = audience;
+    wizardStep = 0;
+  }
+
+  function nextWizardStep() {
+    if (!startupAudience) return;
+    wizardStep = Math.min(wizardStep + 1, wizardTotal - 1);
+  }
+
+  function previousWizardStep() {
+    if (!startupAudience) return;
+    if (wizardStep === 0) {
+      startupAudience = null;
+      return;
+    }
+    wizardStep = Math.max(wizardStep - 1, 0);
   }
 
   async function copyPrompt(label: string, prompt: string) {
@@ -529,26 +559,135 @@
     </section>
 
     {#if startupStep !== 'full'}
-      {#if startupStep === 'chooser'}
-        <section class="startup-chooser" aria-label="Buildbelt startup">
-          <div class="startup-copy">
-            <span>Where to start</span>
-            <h3>Pick the one that sounds like you.</h3>
-            <p>Buildbelt will show only the next useful step. You can open the full guide later.</p>
-          </div>
-          <div class="startup-options">
-            {#each startupChoices as choice}
-              <button type="button" onclick={() => chooseStartup(choice.id)}>
-                <span>{choice.label}</span>
-                <strong>{choice.title}</strong>
-                <small>{choice.copy}</small>
+      {#if true}
+        <section class="startup-wizard" aria-label="Buildbelt startup wizard">
+          {#if !startupAudience}
+            <div class="wizard-step-label">Step 1</div>
+            <h3>Is this for you or a business?</h3>
+            <p>Pick one. Buildbelt will show one step at a time.</p>
+            <div class="wizard-choice-grid two">
+              <button type="button" onclick={() => chooseWizardAudience('personal')}>
+                <strong>Personal</strong>
+                <span>Start using AI yourself.</span>
               </button>
-            {/each}
-          </div>
-          <div class="startup-actions">
-            <button type="button" class="ghost" onclick={showFullGuide}>Show full guide</button>
-            <button type="button" class="ghost" onclick={finishStartup}>Do not show startup again</button>
-          </div>
+              <button type="button" onclick={() => chooseWizardAudience('business')}>
+                <strong>Business</strong>
+                <span>Set rules before a team starts.</span>
+              </button>
+            </div>
+            <div class="wizard-actions">
+              <button type="button" class="ghost" onclick={showFullGuide}>Full guide</button>
+              <button type="button" class="ghost" onclick={finishStartup}>Skip startup</button>
+            </div>
+          {:else if startupAudience === 'personal'}
+            <div class="wizard-step-label">Step {wizardStep + 2} of {wizardTotal + 1}</div>
+            {#if wizardStep === 0}
+              <h3>Can AI help you?</h3>
+              <p>Yes, if you write, plan, research, summarize, organize, brainstorm, or create.</p>
+              <div class="wizard-one-card">
+                <strong>Goal</strong>
+                <span>Find one real task where AI saves time this week.</span>
+              </div>
+            {:else if wizardStep === 1}
+              <h3>Start simple.</h3>
+              <p>Use an official AI app first. Start free. Upgrade only when limits get in the way.</p>
+              <div class="wizard-one-card">
+                <strong>Do not do yet</strong>
+                <span>No API keys. No agents. No new computer.</span>
+              </div>
+            {:else if wizardStep === 2}
+              <h3>Pick one model.</h3>
+              <p>Recommendation for most new users: ChatGPT. Claude and Gemini are good alternatives.</p>
+              <div class="wizard-choice-grid three">
+                {#each starterSubscriptions as subscription}
+                  <button
+                    type="button"
+                    class:active={selectedSubscription === subscription.id}
+                    onclick={() => (selectedSubscription = subscription.id)}
+                  >
+                    <strong>{subscription.label}</strong>
+                    <span>{subscription.bestFor}</span>
+                  </button>
+                {/each}
+              </div>
+            {:else if wizardStep === 3}
+              <h3>Open {modelLabel}.</h3>
+              <p>Create an account or sign in. You handle passwords and payment yourself.</p>
+              <a class="primary link-button wizard-link" href={currentSubscription.link} target="_blank" rel="noreferrer">
+                Open official {modelLabel} app
+              </a>
+            {:else if wizardStep === 4}
+              <h3>Secure the account.</h3>
+              <p>Turn on 2FA or passkey. Save recovery codes. Then stop.</p>
+              <div class="wizard-one-card">
+                <strong>Still no API keys</strong>
+                <span>API billing is for tools and software later.</span>
+              </div>
+            {:else}
+              <h3>Try one prompt.</h3>
+              <p>{comparePrompt}</p>
+              <button type="button" class="ghost prompt-copy" onclick={() => copyPrompt('compare', comparePrompt)}>
+                {copiedPrompt === 'compare' ? 'Copied' : 'Copy prompt'}
+              </button>
+              <div class="startup-parked compact">
+                <strong>Done for now.</strong>
+                <p>Use AI for normal work this week. Come back when you know what you want to do repeatedly.</p>
+              </div>
+            {/if}
+            <div class="wizard-actions">
+              <button type="button" class="ghost" onclick={previousWizardStep}>Back</button>
+              {#if wizardStep < wizardTotal - 1}
+                <button type="button" class="primary" onclick={nextWizardStep}>Next</button>
+              {:else}
+                <button type="button" class="primary" onclick={finishStartup}>Done</button>
+              {/if}
+            </div>
+          {:else}
+            <div class="wizard-step-label">Step {wizardStep + 2} of {wizardTotal + 1}</div>
+            {#if wizardStep === 0}
+              <h3>Can AI help your business?</h3>
+              <p>Yes, but start with rules before staff use random tools.</p>
+              <div class="wizard-one-card">
+                <strong>Goal</strong>
+                <span>Let the team test AI without losing control of files, accounts, or cost.</span>
+              </div>
+            {:else if wizardStep === 1}
+              <h3>Pick approved tools.</h3>
+              <p>Choose one or two official AI apps. Write down what each is allowed for.</p>
+              <div class="wizard-one-card">
+                <strong>Keep it small</strong>
+                <span>One approved starting tool beats ten unmanaged experiments.</span>
+              </div>
+            {:else if wizardStep === 2}
+              <h3>Name the owner.</h3>
+              <p>One person owns billing, recovery codes, admin access, and offboarding.</p>
+              <div class="wizard-one-card">
+                <strong>Protect access</strong>
+                <span>Require 2FA or passkeys for every user.</span>
+              </div>
+            {:else if wizardStep === 3}
+              <h3>Set file rules.</h3>
+              <p>Decide what client files, contracts, private notes, and customer data cannot be pasted into AI.</p>
+              <button type="button" class="ghost prompt-copy" onclick={() => copyPrompt('business', businessRolloutPrompt)}>
+                {copiedPrompt === 'business' ? 'Copied' : 'Copy policy prompt'}
+              </button>
+            {:else}
+              <h3>Park the team here.</h3>
+              <p>No staff API keys. No unattended agents. No client folders connected yet.</p>
+              <div class="startup-parked compact">
+                <strong>Safe starting line.</strong>
+                <p>Let the team use approved AI for normal work first. Come back when a repeated workflow is proven.</p>
+              </div>
+            {/if}
+            <div class="wizard-actions">
+              <button type="button" class="ghost" onclick={previousWizardStep}>Back</button>
+              {#if wizardStep < wizardTotal - 1}
+                <button type="button" class="primary" onclick={nextWizardStep}>Next</button>
+              {:else}
+                <button type="button" class="primary" onclick={finishStartup}>Done</button>
+              {/if}
+            </div>
+          {/if}
         </section>
       {:else if startupStep === 'beginner'}
         <section class="startup-focus" aria-label="Beginner startup">
