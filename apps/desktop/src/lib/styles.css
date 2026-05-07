@@ -1153,6 +1153,48 @@ button.module-item {
   color: var(--fg-muted);
   line-height: 1.25;
 }
+.demo-flow {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-input);
+}
+.demo-flow > div:last-child {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.demo-flow section {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+.demo-flow section > span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(106, 212, 138, 0.36);
+  border-radius: 999px;
+  color: var(--success);
+  font-size: 12px;
+  font-weight: 800;
+}
+.demo-flow strong {
+  display: block;
+  margin-bottom: 5px;
+  line-height: 1.2;
+}
+.demo-flow p {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
 .buying-decisions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1404,6 +1446,7 @@ button.module-item {
   .risk-ladder,
   .buildbelt-paths,
   .mode-checkpoints,
+  .demo-flow > div:last-child,
   .buying-decisions {
     grid-template-columns: 1fr;
   }

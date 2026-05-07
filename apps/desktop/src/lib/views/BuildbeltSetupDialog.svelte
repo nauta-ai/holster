@@ -102,13 +102,41 @@
         label: 'Personal setup',
         title: 'Start simple, protect your accounts, and avoid surprise API bills.',
         copy: 'Best for family, friends, authors, creators, and curious beginners who want AI help without turning their computer into a science project.',
-        checkpoints: ['One paid subscription first', '2FA on important accounts', 'No loose API keys', 'Upgrade only after a repeated workflow']
+        checkpoints: ['One paid subscription first', '2FA on important accounts', 'No loose API keys', 'Upgrade only after a repeated workflow'],
+        demo: [
+          {
+            title: 'The expensive mistake',
+            copy: 'A beginner buys hardware or opens API billing before they know what they actually need.'
+          },
+          {
+            title: 'The safer first month',
+            copy: 'Buildbelt points them to one predictable subscription, basic account safety, and clear rules for when not to create keys.'
+          },
+          {
+            title: 'The upgrade moment',
+            copy: 'When a real workflow appears, Holster stores keys locally and Safe Share checks projects before AI handoff.'
+          }
+        ]
       }
     : {
         label: 'Business setup',
         title: 'Give the team a safe AI starting line before tools, keys, and client files spread everywhere.',
         copy: 'Best for owners, managers, and small teams that need approved tools, account controls, billing guardrails, and safer project handoff.',
-        checkpoints: ['Approved AI tools list', '2FA and recovery codes', 'Named billing owner', 'Safe Share before client or contractor handoff']
+        checkpoints: ['Approved AI tools list', '2FA and recovery codes', 'Named billing owner', 'Safe Share before client or contractor handoff'],
+        demo: [
+          {
+            title: 'The scattered rollout',
+            copy: 'Staff try random AI tools, create unmanaged accounts, and move client files without a shared safety path.'
+          },
+          {
+            title: 'The approved starting line',
+            copy: 'Buildbelt defines the first tools, account controls, billing owner, and what must stay off limits.'
+          },
+          {
+            title: 'The safe handoff',
+            copy: 'Holster keeps API keys owned and local, while Safe Share checks work before it leaves the machine.'
+          }
+        ]
       });
 
   const visibleSteps = $derived(activePath === 'starting' ? startingLessons : workstationSteps);
@@ -245,6 +273,21 @@
             {#each modeDetails.checkpoints as item}
               <span>{item}</span>
             {/each}
+          </div>
+          <div class="demo-flow" aria-label="Founder demo flow">
+            <div class="panel-head">
+              <h3>Three-minute demo</h3>
+              <span>{audienceMode}</span>
+            </div>
+            <div>
+              {#each modeDetails.demo as step, index}
+                <section>
+                  <span>{index + 1}</span>
+                  <strong>{step.title}</strong>
+                  <p>{step.copy}</p>
+                </section>
+              {/each}
+            </div>
           </div>
           <div class="buying-decisions">
             {#each buyingDecisions as item}
