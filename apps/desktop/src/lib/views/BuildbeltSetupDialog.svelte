@@ -28,6 +28,13 @@
     dataRules: false,
     noStaffApi: false
   });
+  let oldComputerChecklist = $state({
+    updated: false,
+    browser: false,
+    security: false,
+    storage: false,
+    subscription: false
+  });
 
   const startingLessons = [
     {
@@ -250,6 +257,7 @@
     }
   ];
   const businessRolloutPrompt = 'I own or manage a small business and want my team to start using AI safely. Ask me seven questions about our work, client data, staff roles, and budget. Then recommend a simple approved AI tool list, billing owner, 2FA rules, file sharing rules, and what staff should not do yet. Do not recommend staff API keys.';
+  const oldComputerPrompt = 'I have an older computer and I want to start using AI without wasting money. Ask me what operating system I have, how old the computer is, how much RAM and storage it has, what browser I use, and what I want AI to help with. Then tell me if I should start with browser AI tools, what to update first, what not to install yet, and when a new computer would actually be worth buying.';
 
   const visibleSteps = $derived(activePath === 'starting' ? startingLessons : workstationSteps);
   const currentSubscription = $derived(
@@ -268,6 +276,13 @@
       && businessChecklist.security
       && businessChecklist.dataRules
       && businessChecklist.noStaffApi
+  );
+  const oldComputerReadyToPark = $derived(
+    oldComputerChecklist.updated
+      && oldComputerChecklist.browser
+      && oldComputerChecklist.security
+      && oldComputerChecklist.storage
+      && oldComputerChecklist.subscription
   );
   const currentLesson = $derived(startingLessons[activeLesson]);
   const pathLabel = $derived(activePath === 'buying'
@@ -650,19 +665,63 @@
             Start with browser tools and account safety. Use the machine to learn what
             work AI actually improves before buying anything new.
           </p>
-          <div class="startup-focus-grid">
+          <div class="choice-guide" aria-label="Old computer readiness">
             <article>
-              <strong>Do now</strong>
-              <p>Update the OS, use a password manager, turn on 2FA, and start with one subscription.</p>
+              <strong>Browser first</strong>
+              <p>Use ChatGPT, Claude, or Gemini in the browser before installing local tools or agents.</p>
             </article>
             <article>
-              <strong>Wait on</strong>
-              <p>Wait on API keys and local model installs until the workflow is real.</p>
+              <strong>Make it safe</strong>
+              <p>Update the OS and browser, use a password manager, turn on 2FA, and save recovery codes.</p>
             </article>
             <article>
-              <strong>Upgrade when</strong>
-              <p>Speed, memory, storage, privacy, or repeated automation becomes the blocker.</p>
+              <strong>Upgrade later</strong>
+              <p>Buy only when speed, memory, storage, privacy, or repeated automation becomes the blocker.</p>
             </article>
+          </div>
+          <div class="first-prompt-card" aria-label="Old computer prompt">
+            <span>Computer check prompt</span>
+            <strong>Use AI to decide whether this computer is enough.</strong>
+            <p>{oldComputerPrompt}</p>
+            <button type="button" class="ghost prompt-copy" onclick={() => copyPrompt('old-computer', oldComputerPrompt)}>
+              {copiedPrompt === 'old-computer' ? 'Copied' : 'Copy prompt'}
+            </button>
+          </div>
+          <div class="startup-checklist" aria-label="Old computer checklist">
+            <strong>Old computer park checklist</strong>
+            <label>
+              <input type="checkbox" bind:checked={oldComputerChecklist.updated} />
+              <span>Operating system and browser updated as far as practical</span>
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={oldComputerChecklist.browser} />
+              <span>One official AI app opened in the browser</span>
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={oldComputerChecklist.security} />
+              <span>Password manager, 2FA, and recovery codes handled</span>
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={oldComputerChecklist.storage} />
+              <span>Enough storage cleared for normal browsing and downloads</span>
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={oldComputerChecklist.subscription} />
+              <span>Free or personal subscription tested before buying hardware</span>
+            </label>
+          </div>
+          {#if oldComputerReadyToPark}
+            <div class="startup-parked" aria-label="Old computer parked">
+              <strong>This computer is ready for a learning week.</strong>
+              <p>Use browser AI for normal work first. Buy hardware only after a real workflow proves the old machine is the blocker.</p>
+            </div>
+          {/if}
+          <div class="startup-hold">
+            <strong>Stop point</strong>
+            <p>
+              Do not install local models, run agents, or open API billing on this machine
+              until browser AI has proved what work you actually want to do.
+            </p>
           </div>
           <div class="startup-actions">
             <button type="button" class="ghost" onclick={() => (startupStep = 'chooser')}>Back</button>
