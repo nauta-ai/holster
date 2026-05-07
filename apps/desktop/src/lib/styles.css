@@ -1161,6 +1161,59 @@ button.module-item {
   display: grid;
   gap: 6px;
 }
+.prompt-copy {
+  justify-self: end;
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.startup-checklist,
+.startup-parked {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+.startup-checklist strong,
+.startup-parked strong {
+  display: block;
+}
+.startup-checklist label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  color: var(--fg);
+  font-size: 13px;
+}
+.startup-checklist input {
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  accent-color: var(--success);
+  flex: 0 0 auto;
+}
+.startup-checklist span {
+  line-height: 1.35;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.startup-parked {
+  border-color: rgba(106, 212, 138, 0.34);
+  background: linear-gradient(135deg, rgba(106, 212, 138, 0.1), var(--bg-panel));
+}
+.startup-parked p {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
 .link-button {
   display: inline-flex;
   align-items: center;
@@ -2090,6 +2143,10 @@ button.module-item {
   .link-button {
     width: 100%;
     white-space: normal;
+  }
+
+  .prompt-copy {
+    justify-self: stretch;
   }
 
   .doctor-hero,

@@ -13,6 +13,14 @@
   let startupStep = $state<'chooser' | 'beginner' | 'guidedSignup' | 'oldComputer' | 'buyingSystem' | 'full'>('full');
   let startupInitialized = $state(false);
   let selectedSubscription = $state<'chatgpt' | 'claude' | 'gemini'>('chatgpt');
+  let copiedPrompt = $state<string | null>(null);
+  let signupChecklist = $state({
+    account: false,
+    firstPrompt: false,
+    security: false,
+    recovery: false,
+    noApi: false
+  });
 
   const startingLessons = [
     {
@@ -233,6 +241,13 @@
   const currentSubscription = $derived(
     starterSubscriptions.find((subscription) => subscription.id === selectedSubscription) ?? starterSubscriptions[0]
   );
+  const signupReadyToPark = $derived(
+    signupChecklist.account
+      && signupChecklist.firstPrompt
+      && signupChecklist.security
+      && signupChecklist.recovery
+      && signupChecklist.noApi
+  );
   const currentLesson = $derived(startingLessons[activeLesson]);
   const pathLabel = $derived(activePath === 'buying'
     ? 'Pre-purchase'
@@ -280,6 +295,18 @@
 
   function showFullGuide() {
     startupStep = 'full';
+  }
+
+  async function copyPrompt(label: string, prompt: string) {
+    try {
+      await navigator.clipboard.writeText(prompt);
+      copiedPrompt = label;
+      setTimeout(() => {
+        if (copiedPrompt === label) copiedPrompt = null;
+      }, 1800);
+    } catch {
+      copiedPrompt = null;
+    }
   }
 
   function nextLesson() {
@@ -459,6 +486,9 @@
             <span>First prompt</span>
             <strong>Use AI to help choose the right subscription.</strong>
             <p>{comparePrompt}</p>
+            <button type="button" class="ghost prompt-copy" onclick={() => copyPrompt('compare', comparePrompt)}>
+              {copiedPrompt === 'compare' ? 'Copied' : 'Copy prompt'}
+            </button>
           </div>
           <div class="prompt-starters" aria-label="Beginner prompt starters">
             <strong>Beginner prompts to try next</strong>
@@ -466,9 +496,41 @@
               <article>
                 <span>{item.label}</span>
                 <p>{item.prompt}</p>
+                <button type="button" class="ghost prompt-copy" onclick={() => copyPrompt(item.label, item.prompt)}>
+                  {copiedPrompt === item.label ? 'Copied' : 'Copy prompt'}
+                </button>
               </article>
             {/each}
           </div>
+          <div class="startup-checklist" aria-label="Guided signup checklist">
+            <strong>Park here checklist</strong>
+            <label>
+              <input type="checkbox" bind:checked={signupChecklist.account} />
+              <span>Official app account created or signed in</span>
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={signupChecklist.firstPrompt} />
+              <span>First prompt tried inside the app</span>
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={signupChecklist.security} />
+              <span>2FA or passkey turned on</span>
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={signupChecklist.recovery} />
+              <span>Recovery codes saved somewhere safe</span>
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={signupChecklist.noApi} />
+              <span>No API keys or developer billing opened</span>
+            </label>
+          </div>
+          {#if signupReadyToPark}
+            <div class="startup-parked" aria-label="Startup parked">
+              <strong>You are done for now.</strong>
+              <p>Use the app for normal work this week. Come back when there is a repeated workflow worth protecting or automating.</p>
+            </div>
+          {/if}
           <div class="startup-hold">
             <strong>Stop point</strong>
             <p>
