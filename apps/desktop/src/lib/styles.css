@@ -1,4 +1,4 @@
-/* Holster desktop UI — lean, dark-mode-friendly. */
+/* Buildbelt desktop UI — local-first, Apple-adjacent, and safety-led. */
 
 :root {
   --bg: #101114;
@@ -18,6 +18,9 @@
   --bg-depth: #0c0d10;
   --rail-bg: rgba(16, 17, 20, 0.76);
   --topbar-bg: rgba(24, 26, 32, 0.72);
+  --surface-tint: rgba(106, 212, 138, 0.08);
+  --shadow-soft: 0 20px 70px rgba(0, 0, 0, 0.34);
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.08);
   --radius: 6px;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
@@ -41,6 +44,9 @@
     --bg-depth: #ece7dc;
     --rail-bg: rgba(255, 255, 255, 0.74);
     --topbar-bg: rgba(255, 255, 255, 0.76);
+    --surface-tint: #f3fbf5;
+    --shadow-soft: 0 20px 70px rgba(45, 37, 23, 0.22);
+    --shadow-subtle: 0 1px 2px rgba(45, 37, 23, 0.08);
   }
 }
 
@@ -72,11 +78,12 @@ button {
   border-radius: var(--radius);
   padding: 6px 14px;
   cursor: pointer;
-  transition: background 120ms, border-color 120ms, transform 120ms;
+  transition: background 120ms, border-color 120ms, box-shadow 120ms, transform 120ms;
 }
 button:hover:not(:disabled) {
   background: var(--bg-panel);
   border-color: var(--border-strong);
+  box-shadow: var(--shadow-subtle);
 }
 button:disabled {
   opacity: 0.5;
@@ -212,7 +219,7 @@ label {
   grid-template-columns: 248px 1fr;
   height: 100vh;
   background:
-    radial-gradient(circle at 20% -20%, rgba(241, 184, 91, 0.14), transparent 34%),
+    linear-gradient(140deg, rgba(106, 212, 138, 0.07), transparent 34%),
     linear-gradient(180deg, var(--bg), var(--bg-depth) 82%);
 }
 
@@ -222,6 +229,7 @@ label {
   border-right: 1px solid var(--border);
   background: var(--rail-bg);
   padding: 18px 16px;
+  backdrop-filter: blur(18px);
 }
 
 .brand-block {
@@ -237,20 +245,21 @@ label {
   place-items: center;
   width: 38px;
   height: 38px;
-  border: 1px solid var(--accent);
+  border: 1px solid rgba(106, 212, 138, 0.42);
   border-radius: 10px;
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.2), transparent 48%),
-    var(--accent-soft);
-  color: var(--accent);
-  font-weight: 800;
+    linear-gradient(145deg, rgba(255, 255, 255, 0.28), transparent 48%),
+    var(--surface-tint);
+  color: var(--success);
+  font-weight: 850;
   letter-spacing: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .brand {
   font-weight: 750;
   letter-spacing: 0;
-  color: var(--accent);
+  color: var(--fg);
   text-transform: uppercase;
 }
 
@@ -288,6 +297,7 @@ button.module-item {
 .module-item.active {
   background: var(--bg-panel);
   border-color: var(--border);
+  box-shadow: var(--shadow-subtle);
 }
 .module-item.doctor-nav {
   background: linear-gradient(135deg, var(--accent-soft), rgba(255, 255, 255, 0.025));
@@ -319,11 +329,11 @@ button.module-item {
   margin-top: auto;
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 8px;
   color: var(--fg-muted);
   font-size: 12px;
   line-height: 1.45;
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--bg-elevated);
 }
 
 .workspace {
@@ -339,6 +349,7 @@ button.module-item {
   padding: 22px 28px 18px;
   border-bottom: 1px solid var(--border);
   background: var(--topbar-bg);
+  backdrop-filter: blur(18px);
 }
 .topbar h1 {
   margin: 3px 0 0;
@@ -564,20 +575,21 @@ button.module-item {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(16, 17, 20, 0.52);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
+  backdrop-filter: blur(4px);
 }
 .modal {
   width: 100%;
   max-width: 460px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 24px;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+  box-shadow: var(--shadow-soft);
 }
 .modal.wide-modal {
   max-width: 720px;
@@ -589,6 +601,7 @@ button.module-item {
   max-height: calc(100vh - 40px);
   overflow: auto;
   padding: 0;
+  border-radius: 12px;
 }
 .modal h2 {
   margin: 0 0 6px;
@@ -799,10 +812,10 @@ button.module-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 180px;
   gap: 18px;
-  padding: 24px;
+  padding: 28px 24px 24px;
   border-bottom: 1px solid var(--border);
   background:
-    linear-gradient(135deg, rgba(106, 212, 138, 0.13), transparent 58%),
+    linear-gradient(135deg, rgba(106, 212, 138, 0.12), transparent 58%),
     var(--bg-elevated);
 }
 .buildbelt-hero h2 {
@@ -849,8 +862,10 @@ button.module-item {
   justify-items: center;
   min-height: 128px;
   border: 1px solid rgba(106, 212, 138, 0.34);
-  border-radius: 8px;
-  background: rgba(106, 212, 138, 0.08);
+  border-radius: 10px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.28), transparent 50%),
+    var(--surface-tint);
 }
 .buildbelt-badge span,
 .buildbelt-side span {
@@ -877,7 +892,7 @@ button.module-item {
   gap: 18px;
   padding: 16px 24px;
   border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.018);
+  background: var(--bg-elevated);
 }
 .buildbelt-mode span,
 .mode-checkpoints span {
@@ -904,7 +919,7 @@ button.module-item {
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--bg-input);
 }
 .mode-switch button {
@@ -915,7 +930,7 @@ button.module-item {
 .mode-switch button.active {
   border-color: var(--border);
   background: var(--bg-elevated);
-  box-shadow: 0 1px 10px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-subtle);
 }
 .buildbelt-paths {
   display: grid;
@@ -930,12 +945,14 @@ button.module-item {
   padding: 16px;
   text-align: left;
   background: var(--bg-panel);
+  box-shadow: none;
 }
 .buildbelt-paths button.active {
   border-color: rgba(106, 212, 138, 0.5);
   background:
     linear-gradient(135deg, rgba(106, 212, 138, 0.12), transparent 68%),
     var(--bg-panel);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 .buildbelt-paths span {
   color: var(--success);
@@ -976,6 +993,7 @@ button.module-item {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-panel);
+  box-shadow: var(--shadow-subtle);
 }
 .buildbelt-checklist,
 .buildbelt-lesson-nav,
@@ -1625,8 +1643,9 @@ button.module-item {
   .modal.buildbelt-modal {
     width: 100%;
     max-width: none;
-    max-height: none;
+    max-height: calc(100vh - 24px);
     margin: 0;
+    overflow: auto;
   }
 
   .doctor-hero,
