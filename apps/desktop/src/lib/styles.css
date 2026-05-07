@@ -1,4 +1,4 @@
-/* Buildbelt desktop UI — local-first, Apple-adjacent, and safety-led. */
+/* Buildbelt desktop UI: local-first, Apple-adjacent, and safety-led. */
 
 :root {
   --bg: #101114;
@@ -932,6 +932,78 @@ button.module-item {
   background: var(--bg-elevated);
   box-shadow: var(--shadow-subtle);
 }
+.journey-rail {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  padding: 14px 24px 0;
+  background: var(--bg-elevated);
+}
+.journey-rail button {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  min-height: 86px;
+  padding: 12px;
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.journey-rail button::before {
+  content: "";
+  position: absolute;
+  top: 25px;
+  left: 42px;
+  right: 0;
+  height: 1px;
+  background: var(--border);
+}
+.journey-rail button:last-child::before {
+  display: none;
+}
+.journey-rail button > span {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+.journey-rail small {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.journey-rail strong {
+  display: block;
+  line-height: 1.15;
+}
+.journey-rail p {
+  margin: 4px 0 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.journey-rail button.active > span {
+  border-color: rgba(106, 212, 138, 0.48);
+  background: var(--surface-tint);
+  color: var(--success);
+}
+.journey-rail button.active strong {
+  color: var(--success);
+}
 .buildbelt-paths {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1498,6 +1570,7 @@ button.module-item {
   .doctor-summary,
   .doctor-report-grid,
   .risk-ladder,
+  .journey-rail,
   .buildbelt-paths,
   .mode-checkpoints,
   .demo-flow > div:last-child,
@@ -1603,6 +1676,24 @@ button.module-item {
   .mode-switch button {
     flex: 1;
     min-height: 38px;
+  }
+
+  .journey-rail {
+    padding: 12px 20px 0;
+  }
+
+  .journey-rail button {
+    min-height: auto;
+    padding: 10px 0;
+  }
+
+  .journey-rail button::before {
+    top: 38px;
+    bottom: -10px;
+    left: 13px;
+    width: 1px;
+    height: auto;
+    right: auto;
   }
 
   .summary-grid {

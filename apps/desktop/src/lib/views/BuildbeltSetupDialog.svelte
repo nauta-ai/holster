@@ -139,6 +139,27 @@
         ]
       });
 
+  const journeyStages = [
+    {
+      path: 'buying',
+      label: 'Decide',
+      title: 'Before spending',
+      copy: 'Choose subscription, API, or hardware with fewer surprises.'
+    },
+    {
+      path: 'starting',
+      label: 'Learn',
+      title: 'First $20 month',
+      copy: 'Build useful AI habits before opening metered billing.'
+    },
+    {
+      path: 'workstation',
+      label: 'Protect',
+      title: 'Safe workstation',
+      copy: 'Use Holster when keys, files, agents, or handoff enter the workflow.'
+    }
+  ] as const;
+
   const visibleSteps = $derived(activePath === 'starting' ? startingLessons : workstationSteps);
   const currentLesson = $derived(startingLessons[activeLesson]);
   const pathLabel = $derived(activePath === 'buying'
@@ -232,6 +253,23 @@
           Business
         </button>
       </div>
+    </section>
+
+    <section class="journey-rail" aria-label="Buildbelt guided journey">
+      {#each journeyStages as stage, index}
+        <button
+          type="button"
+          class:active={activePath === stage.path}
+          onclick={() => setPath(stage.path)}
+        >
+          <span>{index + 1}</span>
+          <div>
+            <small>{stage.label}</small>
+            <strong>{stage.title}</strong>
+            <p>{stage.copy}</p>
+          </div>
+        </button>
+      {/each}
     </section>
 
     <section class="buildbelt-paths" aria-label="Buildbelt setup paths">
