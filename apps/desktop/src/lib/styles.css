@@ -1195,6 +1195,42 @@ button.module-item {
   font-size: 13px;
   line-height: 1.4;
 }
+.setup-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.setup-summary div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(241, 184, 91, 0.34);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, var(--accent-soft), transparent 72%),
+    var(--bg-input);
+}
+.setup-summary span {
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.setup-summary strong {
+  display: block;
+  margin-top: 6px;
+  line-height: 1.2;
+}
+.setup-summary p {
+  margin: 5px 0 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.compact-summary {
+  margin-top: 16px;
+}
 .buying-decisions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1447,6 +1483,7 @@ button.module-item {
   .buildbelt-paths,
   .mode-checkpoints,
   .demo-flow > div:last-child,
+  .setup-summary,
   .buying-decisions {
     grid-template-columns: 1fr;
   }

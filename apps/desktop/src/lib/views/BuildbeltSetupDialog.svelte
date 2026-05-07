@@ -141,6 +141,21 @@
 
   const visibleSteps = $derived(activePath === 'starting' ? startingLessons : workstationSteps);
   const currentLesson = $derived(startingLessons[activeLesson]);
+  const pathLabel = $derived(activePath === 'buying'
+    ? 'Pre-purchase'
+    : activePath === 'starting'
+      ? 'First $20 month'
+      : 'Workstation');
+  const nextMove = $derived(activePath === 'buying'
+    ? (audienceMode === 'personal'
+      ? 'Start with one subscription and use the computer you already have.'
+      : 'Name the approved tools, billing owner, and account rules before buying hardware.')
+    : activePath === 'starting'
+      ? 'Finish the five lessons, then decide whether an API key is truly needed.'
+      : 'Run Safe Share Doctor before adding keys or handing files to an AI tool.');
+  const doctorTiming = $derived(activePath === 'workstation'
+    ? 'Run now before project handoff.'
+    : 'Run when you have a real project folder, API key, or agent workflow.');
 
   function setPath(path: 'buying' | 'starting' | 'workstation') {
     activePath = path;
@@ -289,6 +304,18 @@
               {/each}
             </div>
           </div>
+          <div class="setup-summary" aria-label="Current setup summary">
+            <div>
+              <span>Current plan</span>
+              <strong>{pathLabel} / {modeDetails.label}</strong>
+              <p>{nextMove}</p>
+            </div>
+            <div>
+              <span>Doctor timing</span>
+              <strong>When ready</strong>
+              <p>{doctorTiming}</p>
+            </div>
+          </div>
           <div class="buying-decisions">
             {#each buyingDecisions as item}
               <section>
@@ -367,6 +394,18 @@
               <button type="button" class="primary" onclick={() => setPath('workstation')}>Show workstation setup</button>
             {/if}
           </div>
+          <div class="setup-summary compact-summary" aria-label="Current setup summary">
+            <div>
+              <span>Current plan</span>
+              <strong>{pathLabel} / {modeDetails.label}</strong>
+              <p>{nextMove}</p>
+            </div>
+            <div>
+              <span>Doctor timing</span>
+              <strong>When ready</strong>
+              <p>{doctorTiming}</p>
+            </div>
+          </div>
         </article>
       {:else}
         <article class="buildbelt-checklist">
@@ -382,6 +421,18 @@
               </li>
             {/each}
           </ol>
+          <div class="setup-summary compact-summary" aria-label="Current setup summary">
+            <div>
+              <span>Current plan</span>
+              <strong>{pathLabel} / {modeDetails.label}</strong>
+              <p>{nextMove}</p>
+            </div>
+            <div>
+              <span>Doctor timing</span>
+              <strong>Before handoff</strong>
+              <p>{doctorTiming}</p>
+            </div>
+          </div>
         </article>
       {/if}
 
