@@ -870,6 +870,53 @@ button.module-item {
   color: var(--fg-muted);
   text-align: center;
 }
+.buildbelt-mode {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.018);
+}
+.buildbelt-mode span,
+.mode-checkpoints span {
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.buildbelt-mode strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 17px;
+  line-height: 1.2;
+}
+.buildbelt-mode p {
+  max-width: 780px;
+  margin: 5px 0 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+.mode-switch {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-input);
+}
+.mode-switch button {
+  min-width: 92px;
+  border-color: transparent;
+  background: transparent;
+}
+.mode-switch button.active {
+  border-color: var(--border);
+  background: var(--bg-elevated);
+  box-shadow: 0 1px 10px rgba(0, 0, 0, 0.08);
+}
 .buildbelt-paths {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1091,6 +1138,20 @@ button.module-item {
   margin: 0;
   color: var(--fg-muted);
   font-size: 14px;
+}
+.mode-checkpoints {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.mode-checkpoints span {
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--fg-muted);
+  line-height: 1.25;
 }
 .buying-decisions {
   display: grid;
@@ -1332,6 +1393,7 @@ button.module-item {
     grid-template-columns: 1fr;
   }
   .doctor-banner,
+  .buildbelt-mode,
   .buildbelt-banner,
   .buildbelt-footer {
     align-items: flex-start;
@@ -1341,6 +1403,7 @@ button.module-item {
   .doctor-report-grid,
   .risk-ladder,
   .buildbelt-paths,
+  .mode-checkpoints,
   .buying-decisions {
     grid-template-columns: 1fr;
   }
@@ -1427,6 +1490,21 @@ button.module-item {
   .buildbelt-banner {
     display: grid;
     padding: 16px;
+  }
+
+  .buildbelt-mode {
+    display: grid;
+    grid-template-columns: 1fr;
+    padding: 16px 20px;
+  }
+
+  .mode-switch {
+    width: 100%;
+  }
+
+  .mode-switch button {
+    flex: 1;
+    min-height: 38px;
   }
 
   .summary-grid {

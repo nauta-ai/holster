@@ -6,6 +6,7 @@
 
   let { onClose, onOpenDoctor }: Props = $props();
   let activePath = $state<'buying' | 'starting' | 'workstation'>('buying');
+  let audienceMode = $state<'personal' | 'business'>('personal');
   let activeLesson = $state(0);
 
   const startingLessons = [
@@ -96,6 +97,20 @@
     }
   ];
 
+  const modeDetails = $derived(audienceMode === 'personal'
+    ? {
+        label: 'Personal setup',
+        title: 'Start simple, protect your accounts, and avoid surprise API bills.',
+        copy: 'Best for family, friends, authors, creators, and curious beginners who want AI help without turning their computer into a science project.',
+        checkpoints: ['One paid subscription first', '2FA on important accounts', 'No loose API keys', 'Upgrade only after a repeated workflow']
+      }
+    : {
+        label: 'Business setup',
+        title: 'Give the team a safe AI starting line before tools, keys, and client files spread everywhere.',
+        copy: 'Best for owners, managers, and small teams that need approved tools, account controls, billing guardrails, and safer project handoff.',
+        checkpoints: ['Approved AI tools list', '2FA and recovery codes', 'Named billing owner', 'Safe Share before client or contractor handoff']
+      });
+
   const visibleSteps = $derived(activePath === 'starting' ? startingLessons : workstationSteps);
   const currentLesson = $derived(startingLessons[activeLesson]);
 
@@ -152,6 +167,30 @@
       </div>
     </section>
 
+    <section class="buildbelt-mode" aria-label="Buildbelt setup mode">
+      <div>
+        <span>{modeDetails.label}</span>
+        <strong>{modeDetails.title}</strong>
+        <p>{modeDetails.copy}</p>
+      </div>
+      <div class="mode-switch" role="group" aria-label="Personal or business mode">
+        <button
+          type="button"
+          class:active={audienceMode === 'personal'}
+          onclick={() => (audienceMode = 'personal')}
+        >
+          Personal
+        </button>
+        <button
+          type="button"
+          class:active={audienceMode === 'business'}
+          onclick={() => (audienceMode = 'business')}
+        >
+          Business
+        </button>
+      </div>
+    </section>
+
     <section class="buildbelt-paths" aria-label="Buildbelt setup paths">
       <button
         type="button"
@@ -195,12 +234,17 @@
           </div>
           <div class="buying-verdict">
             <span>Buildbelt recommendation</span>
-            <strong>Subscribe first. Buy later with a real workflow.</strong>
+            <strong>{audienceMode === 'personal' ? 'Subscribe first. Buy later with a real workflow.' : 'Approve tools first. Buy hardware after the workflow is proven.'}</strong>
             <p>
-              Most beginners do not need an expensive AI computer on day one.
-              They need one predictable AI month, account safety, and a clear reason
-              to graduate into APIs or local tools.
+              {audienceMode === 'personal'
+                ? 'Most beginners do not need an expensive AI computer on day one. They need one predictable AI month, account safety, and a clear reason to graduate into APIs or local tools.'
+                : 'Most small teams do not need every employee opening their own tools and keys. They need an approved starting stack, a billing owner, account safety, and a clear handoff process.'}
             </p>
+          </div>
+          <div class="mode-checkpoints">
+            {#each modeDetails.checkpoints as item}
+              <span>{item}</span>
+            {/each}
           </div>
           <div class="buying-decisions">
             {#each buyingDecisions as item}
@@ -300,16 +344,16 @@
 
       <aside class="buildbelt-side">
         <article>
-          <span>Subscription first</span>
-          <p>Use a predictable monthly tool before you let software spend from an API account.</p>
+          <span>{audienceMode === 'personal' ? 'Subscription first' : 'Approved tools first'}</span>
+          <p>{audienceMode === 'personal' ? 'Use a predictable monthly tool before you let software spend from an API account.' : 'Choose the tools your team may use before keys, browser extensions, and client files scatter.'}</p>
         </article>
         <article>
-          <span>API keys are billing keys</span>
-          <p>Create keys only when a tool needs them, then store them behind the local vault boundary.</p>
+          <span>{audienceMode === 'personal' ? 'API keys are billing keys' : 'Keys need owners'}</span>
+          <p>{audienceMode === 'personal' ? 'Create keys only when a tool needs them, then store them behind the local vault boundary.' : 'Every key should have a provider, budget, owner, purpose, and local storage plan.'}</p>
         </article>
         <article>
           <span>Safe Share before handoff</span>
-          <p>Scan projects before sharing folders with AI tools, agents, or contractors.</p>
+          <p>{audienceMode === 'personal' ? 'Scan projects before sharing folders with AI tools, agents, or contractors.' : 'Scan projects before client work, staff folders, or contractor handoffs leave the machine.'}</p>
         </article>
       </aside>
     </section>
