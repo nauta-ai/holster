@@ -7,7 +7,7 @@
   }
 
   let { onClose, onOpenDoctor, startupMode = false, onStartupDone }: Props = $props();
-  let activePath = $state<'buying' | 'starting' | 'workstation'>('buying');
+  let activePath = $state<'buying' | 'starting' | 'workstation' | null>(null);
   let audienceMode = $state<'personal' | 'business'>('personal');
   let activeLesson = $state(0);
   let startupStep = $state<'chooser' | 'beginner' | 'guidedSignup' | 'businessRollout' | 'oldComputer' | 'buyingSystem' | 'full'>('full');
@@ -453,6 +453,7 @@
 
   function showFullGuide() {
     startupStep = 'full';
+    activePath = null;
   }
 
   function chooseWizardAudience(audience: 'personal' | 'business') {
@@ -1097,41 +1098,12 @@
       {/each}
     </section>
 
-    <section class="buildbelt-paths" aria-label="Buildbelt setup paths">
-      <button
-        type="button"
-        class:active={activePath === 'buying'}
-        onclick={() => setPath('buying')}
+    {#if activePath}
+      <section
+        class:buildbelt-content={activePath === 'workstation'}
+        class:buildbelt-walkthrough={activePath === 'starting'}
+        class:buildbelt-buying={activePath === 'buying'}
       >
-        <span>Before I spend money</span>
-        <strong>Should I buy an AI computer?</strong>
-        <small>Decide whether to use what you have, subscribe first, prepare API tools, or buy hardware.</small>
-      </button>
-      <button
-        type="button"
-        class:active={activePath === 'starting'}
-        onclick={() => setPath('starting')}
-      >
-        <span>I am just getting started</span>
-        <strong>First $20 AI Month</strong>
-        <small>Learn with one predictable subscription before API billing or new hardware.</small>
-      </button>
-      <button
-        type="button"
-        class:active={activePath === 'workstation'}
-        onclick={() => setPath('workstation')}
-      >
-        <span>I already have an AI computer</span>
-        <strong>Workstation setup</strong>
-        <small>Turn this machine into a safer AI workstation step by step.</small>
-      </button>
-    </section>
-
-    <section
-      class:buildbelt-content={activePath === 'workstation'}
-      class:buildbelt-walkthrough={activePath === 'starting'}
-      class:buildbelt-buying={activePath === 'buying'}
-    >
       {#if activePath === 'buying'}
         <article class="buying-guide">
           <div class="panel-head">
@@ -1299,31 +1271,18 @@
         </article>
       {/if}
 
-      <aside class="buildbelt-side">
-        <article>
-          <span>{audienceMode === 'personal' ? 'Subscription first' : 'Approved tools first'}</span>
-          <p>{audienceMode === 'personal' ? 'Use a predictable monthly tool before you let software spend from an API account.' : 'Choose the tools your team may use before keys, browser extensions, and client files scatter.'}</p>
-        </article>
-        <article>
-          <span>{audienceMode === 'personal' ? 'API keys are billing keys' : 'Keys need owners'}</span>
-          <p>{audienceMode === 'personal' ? 'Create keys only when a tool needs them, then store them behind the local vault boundary.' : 'Every key should have a provider, budget, owner, purpose, and local storage plan.'}</p>
-        </article>
-        <article>
-          <span>Safe Share before handoff</span>
-          <p>{audienceMode === 'personal' ? 'Scan projects before sharing folders with AI tools, agents, or contractors.' : 'Scan projects before client work, staff folders, or contractor handoffs leave the machine.'}</p>
-        </article>
-      </aside>
     </section>
 
-    <footer class="buildbelt-footer">
-      <p>Buildbelt guides the setup. Holster protects the keys and project handoff.</p>
-      <div>
-        <button type="button" class="ghost" onclick={() => (startupStep = 'chooser')}>Startup</button>
-        <button type="button" class="ghost" onclick={resetStartupProgress}>Reset startup</button>
-        <button type="button" class="ghost" onclick={onClose}>Close</button>
-        <button type="button" class="primary" onclick={openDoctor}>Run Safe Share Doctor</button>
-      </div>
-    </footer>
+      <footer class="buildbelt-footer">
+        <p>Buildbelt guides the setup. Holster protects the keys and project handoff.</p>
+        <div>
+          <button type="button" class="ghost" onclick={() => (startupStep = 'chooser')}>Startup</button>
+          <button type="button" class="ghost" onclick={resetStartupProgress}>Reset startup</button>
+          <button type="button" class="ghost" onclick={onClose}>Close</button>
+          <button type="button" class="primary" onclick={openDoctor}>Run Safe Share Doctor</button>
+        </div>
+      </footer>
+    {/if}
     {/if}
   </div>
 </div>
