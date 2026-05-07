@@ -5,6 +5,7 @@
   import ExportRuntimeDialog from './ExportRuntimeDialog.svelte';
   import ScanProjectDialog from './ScanProjectDialog.svelte';
   import HolsterDoctorDialog from './HolsterDoctorDialog.svelte';
+  import BuildbeltSetupDialog from './BuildbeltSetupDialog.svelte';
   import GitignoreHelperDialog from './GitignoreHelperDialog.svelte';
   import EnvExampleDialog from './EnvExampleDialog.svelte';
   import AuthDialog from './AuthDialog.svelte';
@@ -23,6 +24,7 @@
   let showExport = $state(false);
   let showScan = $state(false);
   let showDoctor = $state(false);
+  let showBuildbelt = $state(false);
   let showGitignore = $state(false);
   let showEnvExample = $state(false);
   let showAuth = $state(false);
@@ -118,12 +120,17 @@
     <div class="brand-block">
       <div class="brand-mark">H</div>
       <div>
-        <div class="brand">Holster</div>
-        <div class="brand-subtitle">Agent safety kit</div>
+        <div class="brand">Buildbelt</div>
+        <div class="brand-subtitle">Holster safety engine</div>
       </div>
     </div>
 
     <nav class="module-nav" aria-label="Product modules">
+      <button class="module-item nav-button buildbelt-nav" onclick={() => (showBuildbelt = true)}>
+        <span class="module-dot"></span>
+        <span>Setup</span>
+        <span class="soon">alpha</span>
+      </button>
       <button class="module-item nav-button doctor-nav" onclick={() => (showDoctor = true)}>
         <span class="module-dot"></span>
         <span>Doctor</span>
@@ -164,9 +171,10 @@
     <header class="topbar">
       <div>
         <p class="eyebrow">Doctor</p>
-        <h1>Make every agent handoff safe to run.</h1>
+        <h1>Turn AI confusion into a safe local setup path.</h1>
       </div>
       <div class="actions">
+        <button onclick={() => (showBuildbelt = true)} class="primary">Start AI Setup</button>
         <button onclick={() => (showDoctor = true)} class="primary">Run Doctor</button>
         <button onclick={() => (showAdd = true)} class="primary">Add key</button>
         <button onclick={refresh} class="ghost icon-button" title="Refresh" aria-label="Refresh">↻</button>
@@ -178,6 +186,18 @@
     {#if error}
       <div class="error-box">{error}</div>
     {/if}
+
+    <section class="buildbelt-banner" aria-label="Buildbelt setup">
+      <div>
+        <p class="eyebrow">Buildbelt Alpha</p>
+        <h2>Start before API billing, expensive hardware, or unsafe agent handoffs.</h2>
+        <p>
+          Buildbelt walks beginners from one predictable AI subscription to
+          account safety, key storage, safe sharing, and workstation readiness.
+        </p>
+      </div>
+      <button class="primary" onclick={() => (showBuildbelt = true)}>Open setup guide</button>
+    </section>
 
     <section class="doctor-banner" aria-label="Holster Doctor">
       <div>
@@ -308,6 +328,13 @@
     {keys}
     onClose={() => (showDoctor = false)}
     onSessionExpired={onSessionExpired}
+  />
+{/if}
+
+{#if showBuildbelt}
+  <BuildbeltSetupDialog
+    onClose={() => (showBuildbelt = false)}
+    onOpenDoctor={() => (showDoctor = true)}
   />
 {/if}
 
