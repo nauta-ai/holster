@@ -2,7 +2,22 @@
 // All errors come back as plain strings (we mapped VaultError -> String in Rust)
 // and are thrown so callers can use try/catch.
 
-import { invoke } from '@tauri-apps/api/core';
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+
+type InvokeArgs = Record<string, unknown> | undefined;
+
+function hasTauriBridge(): boolean {
+  if (typeof window === 'undefined') return true;
+  return Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
+}
+
+async function invoke<T>(command: string, args?: InvokeArgs): Promise<T> {
+  if (import.meta.env.DEV && !hasTauriBridge()) {
+    return mockInvoke<T>(command, args);
+  }
+
+  return await tauriInvoke<T>(command, args);
+}
 
 export type VaultStatusKind = 'no_vault' | 'locked' | 'unlocked';
 
@@ -69,6 +84,153 @@ export const PROVIDERS = [
   'cloudflare',
   'generic'
 ] as const;
+
+async function mockInvoke<T>(command: string, args?: InvokeArgs): Promise<T> {
+  const now = new Date().toISOString();
+  const keys: KeyMetadataDto[] = [
+    {
+      id: 'demo-openai',
+      provider: 'openai',
+      label: 'First AI subscription lab',
+      project_tag: 'Buildbelt demo',
+      created_at: now,
+      expires_at: null,
+      last_used_at: now,
+      status: 'active',
+      notes: 'Dev preview sample only'
+    },
+    {
+      id: 'demo-google',
+      provider: 'google',
+      label: 'Nano Banana image tests',
+      project_tag: 'Creative tools',
+      created_at: now,
+      expires_at: null,
+      last_used_at: null,
+      status: 'active',
+      notes: 'Dev preview sample only'
+    }
+  ];
+
+  switch (command) {
+    case 'vault_status':
+    case 'create_vault':
+      return { status: 'unlocked', path: '~/.holster/demo-vault' } as T;
+    case 'unlock_vault':
+    case 'lock_vault':
+    case 'delete_key':
+      return undefined as T;
+    case 'list_keys':
+      return keys as T;
+    case 'add_key':
+      return {
+        id: 'demo-added',
+        provider: 'generic',
+        label: 'Demo key',
+        project_tag: null,
+        created_at: now,
+        expires_at: null,
+        last_used_at: null,
+        status: 'active',
+        notes: null
+      } as T;
+    case 'copy_to_clipboard':
+      return 30 as T;
+    case 'export_runtime_profile':
+      return {
+        dry_run: true,
+        target_path: '/tmp/.env.buildbelt',
+        profile_name: 'demo',
+        key_count: 2,
+        exported_key_names: ['OPENAI_API_KEY', 'GOOGLE_API_KEY'],
+        preview_lines: ['OPENAI_API_KEY=...', 'GOOGLE_API_KEY=...'],
+        file_exists: false,
+        backup_path: null,
+        git_tracked: false,
+        gitignore_updated: false,
+        audit_log_path: null
+      } as T;
+    case 'scan_project_for_secrets':
+      return {
+        root_path: '/tmp/buildbelt-demo',
+        scanned_files: 42,
+        skipped_binary: 0,
+        skipped_oversize: 0,
+        skipped_unreadable: 0,
+        skipped_ignored: 8,
+        elapsed_ms: 118,
+        detections: [],
+        summary_by_detector: [],
+        summary_by_risk: {},
+        summary_by_provider: {},
+        respect_gitignore: true,
+        follow_symlinks: false
+      } as T;
+    case 'gitignore_audit':
+      return {
+        root_path: '/tmp/buildbelt-demo',
+        target_path: '/tmp/buildbelt-demo/.gitignore',
+        gitignore_exists: true,
+        project_types: ['node'],
+        rule_sets: [],
+        existing_line_count: 12
+      } as T;
+    case 'gitignore_apply':
+      return {
+        target_path: '/tmp/buildbelt-demo/.gitignore',
+        created_new_file: false,
+        lines_added: 0,
+        appended_block: ''
+      } as T;
+    case 'list_agent_profiles':
+      return [
+        {
+          id: 'codex',
+          name: 'Codex',
+          description: 'Local agent runtime profile',
+          default_filename: '.env.codex',
+          suggested_env_vars: ['OPENAI_API_KEY'],
+          todo_note: null
+        }
+      ] as T;
+    case 'env_example_from_vault':
+    case 'env_example_from_file':
+      return {
+        source_kind: 'vault',
+        source_label: 'Buildbelt demo',
+        lines: [
+          { name: 'OPENAI_API_KEY', comment: 'OpenAI API billing key' },
+          { name: 'GOOGLE_API_KEY', comment: 'Google AI Studio key' }
+        ],
+        parsed_count: 2,
+        skipped_count: 0
+      } as T;
+    case 'env_example_apply':
+      return {
+        target_path: '/tmp/buildbelt-demo/.env.example',
+        file_existed: false,
+        overwrote: false,
+        line_count: 2,
+        audit_log_path: null
+      } as T;
+    case 'list_totp_accounts':
+      return [] as T;
+    case 'add_totp_account':
+      return {
+        id: 'demo-totp',
+        label: 'Demo account',
+        issuer: 'Buildbelt',
+        account_name: 'demo@example.com',
+        backup_code_count: 0,
+        created_at: now,
+        last_used_at: null
+      } as T;
+    case 'get_totp_code':
+      return { code: '123456', seconds_remaining: 20, period: 30 } as T;
+    default:
+      throw new Error(`Demo preview does not implement ${command}`);
+  }
+}
 
 export async function vaultStatus(): Promise<VaultStatusReport> {
   return await invoke<VaultStatusReport>('vault_status');

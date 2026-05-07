@@ -1133,3 +1133,160 @@ button.module-item {
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 720px) {
+  body, #app, main {
+    min-height: 100%;
+  }
+
+  .app-shell {
+    display: block;
+    min-height: 100vh;
+    height: auto;
+  }
+
+  .side-rail {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: block;
+    padding: 14px 16px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(16px);
+  }
+
+  .brand-block {
+    padding-bottom: 12px;
+  }
+
+  .module-nav {
+    flex-direction: row;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 12px 0 0;
+    scrollbar-width: none;
+  }
+
+  .module-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .module-item {
+    grid-template-columns: 8px auto;
+    min-width: max-content;
+    min-height: 34px;
+    padding: 7px 10px;
+  }
+
+  .module-item .soon {
+    display: none;
+  }
+
+  .rail-note {
+    display: none;
+  }
+
+  .topbar {
+    display: grid;
+    gap: 14px;
+    padding: 18px 16px 14px;
+  }
+
+  .topbar h1 {
+    font-size: 21px;
+    max-width: 100%;
+  }
+
+  .actions {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .actions button {
+    min-height: 38px;
+  }
+
+  .workspace main {
+    padding: 16px;
+  }
+
+  .doctor-banner,
+  .buildbelt-banner {
+    display: grid;
+    padding: 16px;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-panel {
+    min-height: auto;
+  }
+
+  .tool-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tool-strip button {
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
+  }
+
+  .table-panel {
+    overflow-x: auto;
+  }
+
+  .keys-table {
+    min-width: 720px;
+  }
+
+  .modal-backdrop {
+    align-items: flex-start;
+    padding: 12px;
+    overflow: auto;
+  }
+
+  .modal,
+  .modal.doctor-modal,
+  .modal.buildbelt-modal {
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+  }
+
+  .doctor-hero,
+  .buildbelt-hero {
+    padding: 20px;
+  }
+
+  .doctor-hero h2,
+  .buildbelt-hero h2 {
+    font-size: 26px;
+  }
+
+  .buildbelt-paths,
+  .buildbelt-content,
+  .doctor-summary,
+  .doctor-report-grid {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .buildbelt-footer {
+    padding: 14px 20px 20px;
+  }
+
+  .buildbelt-footer div {
+    width: 100%;
+  }
+
+  .buildbelt-footer button {
+    flex: 1;
+    min-height: 38px;
+  }
+}
