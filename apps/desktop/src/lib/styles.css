@@ -603,6 +603,24 @@ button.module-item {
   padding: 0;
   border-radius: 12px;
 }
+.modal.buildbelt-modal.startup-modal {
+  width: min(860px, calc(100vw - 40px));
+  max-width: 860px;
+}
+.startup-modal .buildbelt-hero {
+  grid-template-columns: 1fr;
+  padding: 26px 24px 22px;
+}
+.startup-modal .buildbelt-hero h2 {
+  max-width: 640px;
+  font-size: 28px;
+}
+.startup-modal .buildbelt-hero p {
+  max-width: 640px;
+}
+.startup-modal .local-status-card {
+  display: none;
+}
 .modal h2 {
   margin: 0 0 6px;
   font-size: 16px;
@@ -930,6 +948,97 @@ button.module-item {
   color: var(--success);
   font-size: 12px;
   font-weight: 800;
+}
+.startup-chooser,
+.startup-focus {
+  padding: 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+.startup-copy {
+  max-width: 620px;
+}
+.startup-copy span,
+.startup-focus > span {
+  color: var(--success);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.startup-copy h3,
+.startup-focus h3 {
+  margin: 6px 0 8px;
+  font-size: 24px;
+  line-height: 1.08;
+}
+.startup-copy p,
+.startup-focus > p {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.startup-options {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+.startup-options button {
+  display: grid;
+  gap: 6px;
+  min-height: 92px;
+  padding: 16px;
+  text-align: left;
+  background: var(--bg-panel);
+}
+.startup-options button:hover {
+  border-color: rgba(106, 212, 138, 0.42);
+}
+.startup-options span {
+  color: var(--success);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.startup-options strong {
+  font-size: 20px;
+  line-height: 1.15;
+}
+.startup-options small {
+  max-width: 640px;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.startup-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+.startup-focus-grid article {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+.startup-focus-grid strong {
+  display: block;
+  margin-bottom: 6px;
+}
+.startup-focus-grid p {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.startup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
 }
 .buildbelt-mode {
   display: grid;
@@ -1783,6 +1892,37 @@ button.module-item {
     max-height: calc(100vh - 24px);
     margin: 0;
     overflow: auto;
+  }
+
+  .startup-chooser,
+  .startup-focus {
+    padding: 18px 20px;
+  }
+
+  .startup-modal .buildbelt-hero {
+    padding: 20px;
+  }
+
+  .startup-modal .buildbelt-hero h2 {
+    font-size: 26px;
+  }
+
+  .startup-options button {
+    min-height: auto;
+    padding: 14px;
+  }
+
+  .startup-focus-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .startup-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .startup-actions button {
+    min-height: 38px;
   }
 
   .doctor-hero,

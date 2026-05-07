@@ -25,6 +25,7 @@
   let showScan = $state(false);
   let showDoctor = $state(false);
   let showBuildbelt = $state(false);
+  let buildbeltStartupMode = $state(false);
   let showGitignore = $state(false);
   let showEnvExample = $state(false);
   let showAuth = $state(false);
@@ -83,6 +84,11 @@
     }, 3000);
   }
 
+  function openBuildbelt(startup = false) {
+    buildbeltStartupMode = startup;
+    showBuildbelt = true;
+  }
+
   function fmtDate(s: string | null): string {
     if (!s) return '—';
     try {
@@ -109,6 +115,13 @@
   $effect(() => {
     refresh();
     pollTimer = setInterval(refresh, 60_000);
+    try {
+      if (localStorage.getItem('buildbeltStartupComplete') !== 'true') {
+        openBuildbelt(true);
+      }
+    } catch {
+      openBuildbelt(true);
+    }
     return () => {
       if (pollTimer) clearInterval(pollTimer);
     };
@@ -126,7 +139,7 @@
     </div>
 
     <nav class="module-nav" aria-label="Product modules">
-      <button class="module-item nav-button buildbelt-nav" onclick={() => (showBuildbelt = true)}>
+      <button class="module-item nav-button buildbelt-nav" onclick={() => openBuildbelt(false)}>
         <span class="module-dot"></span>
         <span>Setup</span>
         <span class="soon">alpha</span>
@@ -174,7 +187,7 @@
         <h1>Turn AI confusion into a safe local setup path.</h1>
       </div>
       <div class="actions">
-        <button onclick={() => (showBuildbelt = true)} class="primary">Start AI Setup</button>
+        <button onclick={() => openBuildbelt(false)} class="primary">Start AI Setup</button>
         <button onclick={() => (showDoctor = true)} class="primary">Run Doctor</button>
         <button onclick={() => (showAdd = true)} class="primary">Add key</button>
         <button onclick={refresh} class="ghost icon-button" title="Refresh" aria-label="Refresh">↻</button>
@@ -196,7 +209,7 @@
           account safety, key storage, safe sharing, and workstation readiness.
         </p>
       </div>
-      <button class="primary" onclick={() => (showBuildbelt = true)}>Open setup guide</button>
+      <button class="primary" onclick={() => openBuildbelt(false)}>Open setup guide</button>
     </section>
 
     <section class="doctor-banner" aria-label="Holster Doctor">
@@ -333,7 +346,15 @@
 
 {#if showBuildbelt}
   <BuildbeltSetupDialog
-    onClose={() => (showBuildbelt = false)}
+    startupMode={buildbeltStartupMode}
+    onClose={() => {
+      showBuildbelt = false;
+      buildbeltStartupMode = false;
+    }}
+    onStartupDone={() => {
+      showBuildbelt = false;
+      buildbeltStartupMode = false;
+    }}
     onOpenDoctor={() => (showDoctor = true)}
   />
 {/if}

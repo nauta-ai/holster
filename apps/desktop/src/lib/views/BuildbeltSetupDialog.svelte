@@ -2,12 +2,16 @@
   interface Props {
     onClose: () => void;
     onOpenDoctor: () => void;
+    startupMode?: boolean;
+    onStartupDone?: () => void;
   }
 
-  let { onClose, onOpenDoctor }: Props = $props();
+  let { onClose, onOpenDoctor, startupMode = false, onStartupDone }: Props = $props();
   let activePath = $state<'buying' | 'starting' | 'workstation'>('buying');
   let audienceMode = $state<'personal' | 'business'>('personal');
   let activeLesson = $state(0);
+  let startupStep = $state<'chooser' | 'beginner' | 'oldComputer' | 'buyingSystem' | 'full'>('full');
+  let startupInitialized = $state(false);
 
   const startingLessons = [
     {
@@ -160,6 +164,27 @@
     }
   ] as const;
 
+  const startupChoices = [
+    {
+      id: 'beginner',
+      label: 'New person',
+      title: 'Start here with the $20 plan',
+      copy: 'Try one simple AI subscription first. No API keys. No new computer. No agent tools yet.'
+    },
+    {
+      id: 'oldComputer',
+      label: 'Somewhat knowledgeable',
+      title: 'Use an old computer first',
+      copy: 'Turn what you already have into a safe learning machine before spending real money.'
+    },
+    {
+      id: 'buyingSystem',
+      label: 'Know what I want',
+      title: 'I am buying a system for AI',
+      copy: 'Use a clear checklist so the purchase matches your actual AI workload.'
+    }
+  ] as const;
+
   const visibleSteps = $derived(activePath === 'starting' ? startingLessons : workstationSteps);
   const currentLesson = $derived(startingLessons[activeLesson]);
   const pathLabel = $derived(activePath === 'buying'
@@ -178,9 +203,36 @@
     ? 'Run now before project handoff.'
     : 'Run when you have a real project folder, API key, or agent workflow.');
 
+  $effect(() => {
+    if (startupInitialized) return;
+    startupStep = startupMode ? 'chooser' : 'full';
+    startupInitialized = true;
+  });
+
   function setPath(path: 'buying' | 'starting' | 'workstation') {
     activePath = path;
     if (path === 'starting') activeLesson = 0;
+  }
+
+  function chooseStartup(step: 'beginner' | 'oldComputer' | 'buyingSystem') {
+    startupStep = step;
+    if (step === 'beginner') setPath('starting');
+    if (step === 'oldComputer') setPath('buying');
+    if (step === 'buyingSystem') setPath('workstation');
+  }
+
+  function finishStartup() {
+    try {
+      localStorage.setItem('buildbeltStartupComplete', 'true');
+    } catch {
+      // Ignore storage failures; closing the startup still works for this session.
+    }
+    onStartupDone?.();
+    onClose();
+  }
+
+  function showFullGuide() {
+    startupStep = 'full';
   }
 
   function nextLesson() {
@@ -208,7 +260,13 @@
 <svelte:window onkeydown={onKeydown} />
 
 <div class="modal-backdrop" role="presentation" onclick={onBackdropClick}>
-  <div class="modal buildbelt-modal" role="dialog" aria-modal="true" aria-labelledby="buildbelt-title">
+  <div
+    class="modal buildbelt-modal"
+    class:startup-modal={startupStep !== 'full'}
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="buildbelt-title"
+  >
     <section class="buildbelt-hero">
       <div>
         <div class="nauta-lockup" aria-label="NautaAI">
@@ -248,6 +306,114 @@
       </div>
     </section>
 
+    {#if startupStep !== 'full'}
+      {#if startupStep === 'chooser'}
+        <section class="startup-chooser" aria-label="Buildbelt startup">
+          <div class="startup-copy">
+            <span>Where to start</span>
+            <h3>Pick the one that sounds like you.</h3>
+            <p>Buildbelt will show only the next useful step. You can open the full guide later.</p>
+          </div>
+          <div class="startup-options">
+            {#each startupChoices as choice}
+              <button type="button" onclick={() => chooseStartup(choice.id)}>
+                <span>{choice.label}</span>
+                <strong>{choice.title}</strong>
+                <small>{choice.copy}</small>
+              </button>
+            {/each}
+          </div>
+          <div class="startup-actions">
+            <button type="button" class="ghost" onclick={showFullGuide}>Show full guide</button>
+            <button type="button" class="ghost" onclick={finishStartup}>Do not show startup again</button>
+          </div>
+        </section>
+      {:else if startupStep === 'beginner'}
+        <section class="startup-focus" aria-label="Beginner startup">
+          <span>Start here</span>
+          <h3>Try one $20 AI plan first.</h3>
+          <p>
+            Use one simple subscription for a month before API keys, agents, local tools,
+            or a new computer. Your goal is to find one real task AI helps with.
+          </p>
+          <div class="startup-focus-grid">
+            <article>
+              <strong>Do now</strong>
+              <p>Pick one assistant, use it daily, and write down where it saves time.</p>
+            </article>
+            <article>
+              <strong>Do not do yet</strong>
+              <p>Do not create API keys, buy hardware, or leave agents running.</p>
+            </article>
+            <article>
+              <strong>Next checkpoint</strong>
+              <p>After a useful workflow appears, come back for key safety and Safe Share.</p>
+            </article>
+          </div>
+          <div class="startup-actions">
+            <button type="button" class="ghost" onclick={() => (startupStep = 'chooser')}>Back</button>
+            <button type="button" class="ghost" onclick={showFullGuide}>Show details</button>
+            <button type="button" class="primary" onclick={finishStartup}>Done with startup</button>
+          </div>
+        </section>
+      {:else if startupStep === 'oldComputer'}
+        <section class="startup-focus" aria-label="Old computer startup">
+          <span>Use what you have</span>
+          <h3>Make the old computer your AI practice machine.</h3>
+          <p>
+            Start with browser tools and account safety. Use the machine to learn what
+            work AI actually improves before buying anything new.
+          </p>
+          <div class="startup-focus-grid">
+            <article>
+              <strong>Do now</strong>
+              <p>Update the OS, use a password manager, turn on 2FA, and start with one subscription.</p>
+            </article>
+            <article>
+              <strong>Wait on</strong>
+              <p>Wait on API keys and local model installs until the workflow is real.</p>
+            </article>
+            <article>
+              <strong>Upgrade when</strong>
+              <p>Speed, memory, storage, privacy, or repeated automation becomes the blocker.</p>
+            </article>
+          </div>
+          <div class="startup-actions">
+            <button type="button" class="ghost" onclick={() => (startupStep = 'chooser')}>Back</button>
+            <button type="button" class="ghost" onclick={showFullGuide}>Show details</button>
+            <button type="button" class="primary" onclick={finishStartup}>Done with startup</button>
+          </div>
+        </section>
+      {:else}
+        <section class="startup-focus" aria-label="AI system buying startup">
+          <span>Buying for AI</span>
+          <h3>Buy for the workload, not the marketing.</h3>
+          <p>
+            Decide what you need to run before choosing a system. Most web AI work
+            needs comfort, RAM, storage, warranty, and a safe account setup first.
+          </p>
+          <div class="startup-focus-grid">
+            <article>
+              <strong>Ask first</strong>
+              <p>Will this run web tools, coding agents, image/video work, or local models?</p>
+            </article>
+            <article>
+              <strong>Protect first</strong>
+              <p>Set account rules, 2FA, billing ownership, and key storage before agents touch files.</p>
+            </article>
+            <article>
+              <strong>Run Doctor</strong>
+              <p>Use Safe Share before handoff when projects, keys, or client files enter the workflow.</p>
+            </article>
+          </div>
+          <div class="startup-actions">
+            <button type="button" class="ghost" onclick={() => (startupStep = 'chooser')}>Back</button>
+            <button type="button" class="ghost" onclick={showFullGuide}>Show details</button>
+            <button type="button" class="primary" onclick={finishStartup}>Done with startup</button>
+          </div>
+        </section>
+      {/if}
+    {:else}
     <section class="buildbelt-mode" aria-label="Buildbelt setup mode">
       <div>
         <span>{modeDetails.label}</span>
@@ -510,9 +676,13 @@
     <footer class="buildbelt-footer">
       <p>Buildbelt guides the setup. Holster protects the keys and project handoff.</p>
       <div>
+        {#if startupMode}
+          <button type="button" class="ghost" onclick={() => (startupStep = 'chooser')}>Startup</button>
+        {/if}
         <button type="button" class="ghost" onclick={onClose}>Close</button>
         <button type="button" class="primary" onclick={openDoctor}>Run Safe Share Doctor</button>
       </div>
     </footer>
+    {/if}
   </div>
 </div>
