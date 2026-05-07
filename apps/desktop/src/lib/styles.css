@@ -1029,6 +1029,9 @@ button.module-item {
 .wizard-link {
   min-height: 40px;
 }
+.wizard-prompt {
+  margin-top: 0;
+}
 .startup-parked.compact {
   margin-top: 0;
 }

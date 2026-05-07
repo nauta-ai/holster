@@ -596,8 +596,16 @@
                 <span>No API keys. No agents. No new computer.</span>
               </div>
             {:else if wizardStep === 2}
-              <h3>Pick one model.</h3>
-              <p>Recommendation for most new users: ChatGPT. Claude and Gemini are good alternatives.</p>
+              <h3>Ask AI which one fits you.</h3>
+              <p>Copy this into any chat you already use. Then pick the model it recommends.</p>
+              <div class="first-prompt-card wizard-prompt" aria-label="Model selection prompt">
+                <span>First prompt</span>
+                <strong>Help me choose ChatGPT, Claude, or Gemini.</strong>
+                <p>{comparePrompt}</p>
+                <button type="button" class="ghost prompt-copy" onclick={() => copyPrompt('compare', comparePrompt)}>
+                  {copiedPrompt === 'compare' ? 'Copied' : 'Copy prompt'}
+                </button>
+              </div>
               <div class="wizard-choice-grid three">
                 {#each starterSubscriptions as subscription}
                   <button
