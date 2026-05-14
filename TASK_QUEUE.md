@@ -349,17 +349,71 @@ Verified locally (macOS arm64, 2026-05-02):
 - `pnpm exec tauri build --no-bundle` from `apps/desktop/` → release
   binary rebuilt at `target/release/holster-desktop`.
 
+## M2.1 — Buildbelt UX landing (2026-05-14)
+
+Buildbelt-branded wrapper around the M1-M4 Holster engine. Shipped in 7 logical
+commits on `milestone/M2-desktop-shell` 2026-05-14 morning after a multi-week
+uncommitted accumulation was reviewed, chunked, and verified green:
+
+- [x] T2.1.1 — Brand asset refresh (icons + holster-mark.png)
+- [x] T2.1.2 — Detector pack v0.2 (`detectors.rs` — expanded patterns + tier metadata)
+- [x] T2.1.3 — Repo scanner v0.2 (`repo_scanner.rs` — fixture classification helpers
+      `is_test_path`, `is_self_reference_path`; risk-summary aggregation; six new
+      classification tests)
+- [x] T2.1.4 — Buildbelt setup + Holster Doctor dialog redesign (Main.svelte,
+      BuildbeltSetupDialog.svelte, HolsterDoctorDialog.svelte; DESIGN.md design
+      contract applied: warm off-white, amber primary, green safety signals)
+- [x] T2.1.5 — CLI `import` + `exec-env` subcommands (apps/cli/src/main.rs +748
+      lines; powers the runtime-secrets pattern Rosie / Amelia / Henry / Atticus
+      use; service-name override for macOS Keychain; metadata-only audit log)
+- [x] T2.1.6 — `.gitignore` hygiene: agent automation overflow folders + `*.bak*`
+      patterns now ignored; repo `git status` clean
+
+Verified locally (macOS arm64, 2026-05-14):
+
+- `cargo test --workspace` → 193 vault + 63 desktop + 3 follow-on = **259 passed**, 0 failed
+- `cargo build --workspace` → clean
+- `cargo fmt --all -- --check` → clean
+- `pnpm --filter holster-desktop-ui build` → clean (autofocus warnings unchanged)
+
+## M5 — Holster MCP Preflight (2026-05-14)
+
+New product surface — deterministic local analyzer for the "is this MCP
+server safe to run?" query family. Competitive landscape research 2026-05-14
+shows the deterministic-offline tier of this market is empty: Snyk Agent
+Scan, Cisco MCP Scanner, Enkrypt all phone home or boot LLMs; CLAUDIT-SEC
+is PowerShell dump only.
+
+- [x] T5.0 — V0 analyzer (700 lines, 14 tests).
+      `analyze_mcp_config(json) -> Result<McpPreflightReport, McpPreflightError>`.
+      Pure in-memory JSON inspection — no network, no AI, no file I/O. Public
+      enums: `Verdict { Safe, Caution, Risky }`, `Severity { Info, Caution, Risk }`,
+      `Category { Run, Share, Both }`. Ten checks per OWASP MCP01 (sensitive env
+      vars) + MCP04 (wrapper drift) + MCP09 (shadow servers via shell exec).
+      Built by Codex via handoff at
+      `Operations/AgentOps/Codex/2026-05-14-holster-mcp-preflight-v0-handover.md`;
+      QC by CC: lib.rs diff = exactly 1 line, all 14 named tests present at exact
+      spec names, independent `cargo test --workspace` confirms 259 total,
+      desktop-package clippy clean. Spec at
+      `obsidian-vault/Nauta-AI/Projects/Holster/2026-05-14-mcp-preflight-v0-spec.md`.
+
+- [ ] T5.1 — V0.5 wire-up: Tauri `#[tauri::command]` wrapper for the analyzer
+      + `McpPreflightDialog.svelte` (paste JSON area → verdict pills → findings
+      list with fix-hint accordion) + BuildBelt wizard "Check your MCP servers"
+      step that auto-scans `~/Library/Application Support/Claude/claude_desktop_config.json`.
+
 ## Up next
 
-- M2 manual acceptance by Dave (`pnpm exec tauri dev` from `apps/desktop/`).
-  *(M3 already accepted 2026-04-30 — this is the older M2 acceptance still
-  outstanding from the M2 sign-off block above.)*
-- M3.1 and M4 Auth manual click acceptance by Dave (`pnpm exec tauri dev`
-  from `apps/desktop/`), then founder cohort / landing-page work.
-- M4.1 — QR-image import for authenticator setup.
-- M4.2 — safe Telegram notification design: "approval needed / open Holster",
+- **M2 / M3.1 / M4 manual click acceptance by Dave** (`pnpm exec tauri dev`
+  from `apps/desktop/`). Click-test script at
+  `docs/click-test/m2-m4-acceptance-2026-05-14.md`.
+- **T5.1 — V0.5 MCP preflight wire-up** (queued — CC building in temp-autonomy window 2026-05-14).
+- **AEO content cascade** — 8 Codex AEO briefs at `~/holster/2026-05-{07..13}-*.md`
+  ready to render as `/holster/...` landing pages on nautaai.com.
+- **M4.1** — QR-image import for authenticator setup.
+- **M4.2** — safe Telegram notification design: "approval needed / open Holster",
   not chat-delivered 2FA codes by default.
-- M5 — custom detector packs (Founder tier) + repo scheduling + CLI for CI gates.
+- **M6** — custom detector packs (Founder tier) + repo scheduling + CLI for CI gates.
 - Lifecycle features (expiry dates, status colors, notifications) per
   `docs/framework/05_MILESTONES.md` § M3 — re-scope into a future
   milestone since M3 is now closed on detector + scanner work.
