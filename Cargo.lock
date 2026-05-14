@@ -1651,10 +1651,14 @@ name = "holster-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "holster-vault",
+ "plist",
  "rpassword",
  "secrecy",
+ "serde",
+ "serde_json",
  "uuid",
 ]
 

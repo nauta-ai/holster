@@ -11,12 +11,15 @@
 //!   holster get  /tmp/test.db <uuid>
 //!   holster delete /tmp/test.db <uuid>
 
-use std::path::PathBuf;
-use std::process::ExitCode;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::process::{Command as ProcessCommand, ExitCode};
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use plist::Value;
 use secrecy::ExposeSecret;
+use serde::Deserialize;
 use uuid::Uuid;
 
 use holster_vault::{AddKeyInput, KeyMetadata, KeyStatus, Provider, Vault};
@@ -54,6 +57,64 @@ enum Command {
     Get { path: PathBuf, id: Uuid },
     /// Delete a key by id.
     Delete { path: PathBuf, id: Uuid },
+    /// Import secret-bearing environment variables from a launchd plist.
+    ImportPlistEnv {
+        path: PathBuf,
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        label_prefix: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        allow_duplicates: bool,
+    },
+    /// Import secret-bearing variables from a .env-style file.
+    ImportEnv {
+        path: PathBuf,
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        label_prefix: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        allow_duplicates: bool,
+    },
+    /// Import multiple launchd plist and .env sources with one unlock.
+    ImportBatch {
+        path: PathBuf,
+        #[arg(long = "plist")]
+        plists: Vec<PathBuf>,
+        #[arg(long = "env")]
+        envs: Vec<PathBuf>,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        label_prefix: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        allow_duplicates: bool,
+    },
+    /// Run a child process with env vars fetched from Holster.
+    ExecEnv {
+        path: PathBuf,
+        #[arg(long)]
+        manifest: PathBuf,
+        #[arg(long)]
+        password_env: Option<String>,
+        #[arg(long)]
+        password_keychain_service: Option<String>,
+        #[arg(long)]
+        password_keychain_account: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy)]
@@ -113,6 +174,68 @@ fn run(cli: Cli) -> Result<()> {
         Command::List { path } => cmd_list(&path),
         Command::Get { path, id } => cmd_get(&path, id),
         Command::Delete { path, id } => cmd_delete(&path, id),
+        Command::ImportPlistEnv {
+            path,
+            source,
+            project,
+            label_prefix,
+            dry_run,
+            allow_duplicates,
+        } => cmd_import(
+            &path,
+            ImportSource::LaunchdPlist(source),
+            project,
+            label_prefix,
+            dry_run,
+            allow_duplicates,
+        ),
+        Command::ImportEnv {
+            path,
+            source,
+            project,
+            label_prefix,
+            dry_run,
+            allow_duplicates,
+        } => cmd_import(
+            &path,
+            ImportSource::EnvFile(source),
+            project,
+            label_prefix,
+            dry_run,
+            allow_duplicates,
+        ),
+        Command::ImportBatch {
+            path,
+            plists,
+            envs,
+            project,
+            label_prefix,
+            dry_run,
+            allow_duplicates,
+        } => cmd_import_batch(
+            &path,
+            plists,
+            envs,
+            project,
+            label_prefix,
+            dry_run,
+            allow_duplicates,
+        ),
+        Command::ExecEnv {
+            path,
+            manifest,
+            password_env,
+            password_keychain_service,
+            password_keychain_account,
+            dry_run,
+        } => cmd_exec_env(
+            &path,
+            &manifest,
+            password_env.as_deref(),
+            password_keychain_service.as_deref(),
+            password_keychain_account.as_deref(),
+            dry_run,
+        ),
     }
 }
 
@@ -206,6 +329,627 @@ fn cmd_delete(path: &std::path::Path, id: Uuid) -> Result<()> {
     println!("✓ deleted {id}");
     vault.lock(token).ok();
     Ok(())
+}
+
+enum ImportSource {
+    LaunchdPlist(PathBuf),
+    EnvFile(PathBuf),
+}
+
+struct ImportCandidate {
+    name: String,
+    value: String,
+    provider: Provider,
+    source_label: String,
+}
+
+fn cmd_import(
+    path: &Path,
+    source: ImportSource,
+    project: Option<String>,
+    label_prefix: Option<String>,
+    dry_run: bool,
+    allow_duplicates: bool,
+) -> Result<()> {
+    let candidates = read_import_candidates(&source)?;
+    let source_path = match &source {
+        ImportSource::LaunchdPlist(p) | ImportSource::EnvFile(p) => p,
+    };
+
+    println!(
+        "source: {}",
+        source_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("<unknown>")
+    );
+    println!("candidate secret vars: {}", candidates.len());
+    for candidate in &candidates {
+        println!(
+            "  {} ({})",
+            display_candidate_name(candidate),
+            candidate.provider.as_str()
+        );
+    }
+
+    if dry_run {
+        println!("dry run only; no vault writes");
+        return Ok(());
+    }
+
+    if candidates.is_empty() {
+        println!("nothing to import");
+        return Ok(());
+    }
+
+    let vault = Vault::open(path).context("opening vault")?;
+    let pw = rpassword::prompt_password("Master password: ")?;
+    let token = vault
+        .unlock(&pw)
+        .context("unlock failed (wrong password?)")?;
+    let existing = vault.list_keys(token).context("listing existing keys")?;
+
+    let mut added = 0usize;
+    let mut skipped = 0usize;
+    for candidate in candidates {
+        let display_name = display_candidate_name(&candidate);
+        let label = import_label(
+            label_prefix.as_deref(),
+            &candidate.source_label,
+            &candidate.name,
+        );
+        let already_present = existing.iter().any(|meta| {
+            meta.provider == candidate.provider
+                && meta.label == label
+                && meta.project_tag.as_deref() == project.as_deref()
+        });
+
+        if already_present && !allow_duplicates {
+            println!("  skipped existing {display_name}");
+            skipped += 1;
+            continue;
+        }
+
+        let input = AddKeyInput {
+            provider: candidate.provider,
+            label,
+            key_value: candidate.value,
+            project_tag: project.clone(),
+            expires_at: None,
+            notes: Some(format!(
+                "Imported from {}. Source path intentionally not stored in public reports.",
+                source_kind(&source)
+            )),
+        };
+        let meta = vault.add_key(token, input).context("adding imported key")?;
+        println!("  added {display_name} as {}", meta.id);
+        added += 1;
+    }
+
+    vault.lock(token).ok();
+    println!("import complete: added={added} skipped={skipped}");
+    Ok(())
+}
+
+fn cmd_import_batch(
+    path: &Path,
+    plists: Vec<PathBuf>,
+    envs: Vec<PathBuf>,
+    project: Option<String>,
+    label_prefix: Option<String>,
+    dry_run: bool,
+    allow_duplicates: bool,
+) -> Result<()> {
+    if plists.is_empty() && envs.is_empty() {
+        return Err(anyhow!("provide at least one --plist or --env source"));
+    }
+
+    let mut candidates = Vec::new();
+    for source in plists {
+        candidates.extend(read_import_candidates(&ImportSource::LaunchdPlist(source))?);
+    }
+    for source in envs {
+        candidates.extend(read_import_candidates(&ImportSource::EnvFile(source))?);
+    }
+
+    println!("batch candidate secret vars: {}", candidates.len());
+    for candidate in &candidates {
+        println!(
+            "  {} ({})",
+            display_candidate_name(candidate),
+            candidate.provider.as_str()
+        );
+    }
+
+    if dry_run {
+        println!("dry run only; no vault writes");
+        return Ok(());
+    }
+
+    if candidates.is_empty() {
+        println!("nothing to import");
+        return Ok(());
+    }
+
+    let vault = Vault::open(path).context("opening vault")?;
+    let pw = rpassword::prompt_password("Master password: ")?;
+    let token = vault
+        .unlock(&pw)
+        .context("unlock failed (wrong password?)")?;
+    let existing = vault.list_keys(token).context("listing existing keys")?;
+
+    let mut added = 0usize;
+    let mut skipped = 0usize;
+    for candidate in candidates {
+        let display_name = display_candidate_name(&candidate);
+        let label = import_label(
+            label_prefix.as_deref(),
+            &candidate.source_label,
+            &candidate.name,
+        );
+        let already_present = existing.iter().any(|meta| {
+            meta.provider == candidate.provider
+                && meta.label == label
+                && meta.project_tag.as_deref() == project.as_deref()
+        });
+
+        if already_present && !allow_duplicates {
+            println!("  skipped existing {display_name}");
+            skipped += 1;
+            continue;
+        }
+
+        let input = AddKeyInput {
+            provider: candidate.provider,
+            label,
+            key_value: candidate.value,
+            project_tag: project.clone(),
+            expires_at: None,
+            notes: Some("Imported from MoonShot batch migration. Source path intentionally not stored in public reports.".into()),
+        };
+        let meta = vault.add_key(token, input).context("adding imported key")?;
+        println!("  added {display_name} as {}", meta.id);
+        added += 1;
+    }
+
+    vault.lock(token).ok();
+    println!("batch import complete: added={added} skipped={skipped}");
+    Ok(())
+}
+
+fn source_kind(source: &ImportSource) -> &'static str {
+    match source {
+        ImportSource::LaunchdPlist(_) => "launchd plist",
+        ImportSource::EnvFile(_) => "env file",
+    }
+}
+
+fn read_import_candidates(source: &ImportSource) -> Result<Vec<ImportCandidate>> {
+    let source_label = match source {
+        ImportSource::LaunchdPlist(path) | ImportSource::EnvFile(path) => source_label(path),
+    };
+    let vars = match source {
+        ImportSource::LaunchdPlist(path) => read_launchd_env(path)?,
+        ImportSource::EnvFile(path) => read_env_file(path)?,
+    };
+
+    let mut candidates = Vec::new();
+    for (name, value) in vars {
+        if !is_secret_var(&name) || value.trim().is_empty() {
+            continue;
+        }
+        candidates.push(ImportCandidate {
+            provider: provider_for_var(&name),
+            name,
+            value,
+            source_label: source_label.clone(),
+        });
+    }
+    Ok(candidates)
+}
+
+fn read_launchd_env(path: &Path) -> Result<BTreeMap<String, String>> {
+    let value = Value::from_file(path).with_context(|| format!("reading {}", path.display()))?;
+    let root = value
+        .as_dictionary()
+        .ok_or_else(|| anyhow!("plist root must be a dictionary"))?;
+    let env = root
+        .get("EnvironmentVariables")
+        .and_then(Value::as_dictionary)
+        .ok_or_else(|| anyhow!("plist has no EnvironmentVariables dictionary"))?;
+
+    let mut vars = BTreeMap::new();
+    for (key, value) in env {
+        if let Some(s) = value.as_string() {
+            vars.insert(key.to_string(), s.to_string());
+        }
+    }
+    Ok(vars)
+}
+
+fn read_env_file(path: &Path) -> Result<BTreeMap<String, String>> {
+    let body =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    let mut vars = BTreeMap::new();
+    for line in body.lines() {
+        let mut trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("export ") {
+            trimmed = rest.trim_start();
+        }
+        let Some((key, raw_value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        if key.is_empty()
+            || !key
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+        {
+            continue;
+        }
+        vars.insert(key.to_string(), unquote_env_value(raw_value.trim()));
+    }
+    Ok(vars)
+}
+
+fn unquote_env_value(raw: &str) -> String {
+    if raw.len() >= 2 {
+        let bytes = raw.as_bytes();
+        let first = bytes[0];
+        let last = bytes[raw.len() - 1];
+        if (first == b'\'' && last == b'\'') || (first == b'"' && last == b'"') {
+            return raw[1..raw.len() - 1].to_string();
+        }
+    }
+    raw.to_string()
+}
+
+fn is_secret_var(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    upper.contains("KEY")
+        || upper.contains("TOKEN")
+        || upper.contains("SECRET")
+        || upper.contains("PASSWORD")
+        || upper.ends_with("_PASS")
+}
+
+fn provider_for_var(name: &str) -> Provider {
+    let upper = name.to_ascii_uppercase();
+    if upper.contains("ANTHROPIC") || upper.contains("CLAUDE") {
+        Provider::Anthropic
+    } else if upper.contains("OPENAI") {
+        Provider::OpenAI
+    } else if upper.contains("GEMINI") || upper.contains("GOOGLE") {
+        Provider::Google
+    } else if upper.contains("REPLICATE") {
+        Provider::Replicate
+    } else if upper.contains("ELEVEN") {
+        Provider::ElevenLabs
+    } else if upper.contains("PINECONE") {
+        Provider::Pinecone
+    } else if upper.contains("STRIPE") {
+        Provider::Stripe
+    } else if upper.contains("CLOUDFLARE") {
+        Provider::Cloudflare
+    } else {
+        Provider::Generic
+    }
+}
+
+fn import_label(prefix: Option<&str>, source_label: &str, name: &str) -> String {
+    match prefix {
+        Some(prefix) if !prefix.trim().is_empty() => {
+            format!("{}:{}:{}", prefix.trim(), source_label, name)
+        }
+        _ => format!("{source_label}:{name}"),
+    }
+}
+
+fn source_label(path: &Path) -> String {
+    let mut parts = Vec::new();
+    if let Some(grandparent) = path
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::file_name)
+        .and_then(|s| s.to_str())
+    {
+        parts.push(grandparent);
+    }
+    if let Some(parent) = path
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|s| s.to_str())
+    {
+        parts.push(parent);
+    }
+    if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+        parts.push(name.trim_start_matches('.'));
+    }
+    sanitize_label(&parts.join("-"))
+}
+
+fn sanitize_label(raw: &str) -> String {
+    let mut out = String::new();
+    let mut last_sep = false;
+    for ch in raw.chars() {
+        let mapped = if ch.is_ascii_alphanumeric() {
+            ch.to_ascii_lowercase()
+        } else {
+            '-'
+        };
+        if mapped == '-' {
+            if !last_sep {
+                out.push(mapped);
+                last_sep = true;
+            }
+        } else {
+            out.push(mapped);
+            last_sep = false;
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
+fn display_candidate_name(candidate: &ImportCandidate) -> String {
+    format!("{}:{}", candidate.source_label, candidate.name)
+}
+
+#[derive(Debug, Deserialize)]
+struct ExecManifest {
+    agent_id: String,
+    audit_path: PathBuf,
+    env: Vec<ExecEnvVar>,
+    command: Vec<String>,
+    working_directory: Option<PathBuf>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExecEnvVar {
+    name: String,
+    provider: Option<Provider>,
+    project: Option<String>,
+    label: String,
+}
+
+fn cmd_exec_env(
+    vault_path: &Path,
+    manifest_path: &Path,
+    password_env: Option<&str>,
+    password_keychain_service: Option<&str>,
+    password_keychain_account: Option<&str>,
+    dry_run: bool,
+) -> Result<()> {
+    let manifest = read_exec_manifest(manifest_path)?;
+    validate_exec_manifest(&manifest)?;
+
+    println!("agent: {}", manifest.agent_id);
+    println!("env vars requested: {}", manifest.env.len());
+    for spec in &manifest.env {
+        println!("  {}", spec.name);
+    }
+    println!("command: {}", manifest.command[0]);
+
+    if dry_run {
+        println!("dry run only; no vault unlock and no child process");
+        return Ok(());
+    }
+
+    let password = read_runtime_password(
+        password_env,
+        password_keychain_service,
+        password_keychain_account,
+    )?;
+    let vault = Vault::open(vault_path).context("opening vault")?;
+    let token = vault
+        .unlock(&password)
+        .context("unlock failed (wrong password?)")?;
+    let metadata = vault.list_keys(token).context("listing keys")?;
+
+    let mut child_env = BTreeMap::new();
+    for spec in &manifest.env {
+        let id = resolve_manifest_key(spec, &metadata)?;
+        let secret = vault
+            .get_key_value(token, id)
+            .with_context(|| format!("fetching key for {}", spec.name))?;
+        child_env.insert(spec.name.clone(), secret.expose_secret().to_string());
+        drop(secret);
+    }
+
+    let audit_path = &manifest.audit_path;
+    if let Some(parent) = audit_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating audit dir {}", parent.display()))?;
+        set_owner_only_dir(parent);
+    }
+    append_exec_audit(audit_path, &manifest.agent_id, &manifest.env)?;
+    set_owner_only_file(audit_path);
+
+    let status = run_manifest_child(&manifest, &child_env)?;
+    vault.lock(token).ok();
+    std::process::exit(status);
+}
+
+fn read_exec_manifest(path: &Path) -> Result<ExecManifest> {
+    ensure_owner_only_path(path)?;
+    let text =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))
+}
+
+fn validate_exec_manifest(manifest: &ExecManifest) -> Result<()> {
+    if manifest.agent_id.trim().is_empty() {
+        return Err(anyhow!("manifest agent_id is required"));
+    }
+    if manifest.env.is_empty() {
+        return Err(anyhow!("manifest env list is empty"));
+    }
+    if manifest.command.is_empty() || manifest.command[0].trim().is_empty() {
+        return Err(anyhow!("manifest command is required"));
+    }
+    for spec in &manifest.env {
+        if spec.name.trim().is_empty() {
+            return Err(anyhow!("manifest env var name is required"));
+        }
+        if !spec
+            .name
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+        {
+            return Err(anyhow!(
+                "env var {} must be uppercase env-name shaped",
+                spec.name
+            ));
+        }
+        if spec.label.trim().is_empty() {
+            return Err(anyhow!("manifest label for {} is required", spec.name));
+        }
+    }
+    Ok(())
+}
+
+fn read_runtime_password(
+    password_env: Option<&str>,
+    password_keychain_service: Option<&str>,
+    password_keychain_account: Option<&str>,
+) -> Result<String> {
+    if let Some(name) = password_env {
+        let value =
+            std::env::var(name).with_context(|| format!("reading password env var {name}"))?;
+        if value.is_empty() {
+            return Err(anyhow!("password env var {name} is empty"));
+        }
+        return Ok(value);
+    }
+
+    if let Some(service) = password_keychain_service {
+        let mut cmd = ProcessCommand::new("/usr/bin/security");
+        cmd.arg("find-generic-password")
+            .arg("-w")
+            .arg("-s")
+            .arg(service);
+        if let Some(account) = password_keychain_account {
+            cmd.arg("-a").arg(account);
+        }
+        let output = cmd
+            .output()
+            .context("running security find-generic-password")?;
+        if !output.status.success() {
+            return Err(anyhow!(
+                "could not read Holster runtime password from Keychain"
+            ));
+        }
+        let password = String::from_utf8(output.stdout)
+            .context("keychain password was not utf-8")?
+            .trim_end_matches(['\r', '\n'])
+            .to_string();
+        if password.is_empty() {
+            return Err(anyhow!("keychain password was empty"));
+        }
+        return Ok(password);
+    }
+
+    rpassword::prompt_password("Master password: ").context("reading password")
+}
+
+fn resolve_manifest_key(spec: &ExecEnvVar, metadata: &[KeyMetadata]) -> Result<Uuid> {
+    let matches: Vec<&KeyMetadata> = metadata
+        .iter()
+        .filter(|meta| {
+            meta.label == spec.label
+                && spec
+                    .project
+                    .as_deref()
+                    .map_or(true, |project| meta.project_tag.as_deref() == Some(project))
+                && spec
+                    .provider
+                    .map_or(true, |provider| meta.provider == provider)
+        })
+        .collect();
+
+    match matches.as_slice() {
+        [meta] => Ok(meta.id),
+        [] => Err(anyhow!(
+            "no Holster key metadata matched env var {}",
+            spec.name
+        )),
+        _ => Err(anyhow!(
+            "multiple Holster key metadata rows matched env var {}",
+            spec.name
+        )),
+    }
+}
+
+fn run_manifest_child(
+    manifest: &ExecManifest,
+    child_env: &BTreeMap<String, String>,
+) -> Result<i32> {
+    let mut child = ProcessCommand::new(&manifest.command[0]);
+    if manifest.command.len() > 1 {
+        child.args(&manifest.command[1..]);
+    }
+    if let Some(cwd) = &manifest.working_directory {
+        child.current_dir(cwd);
+    }
+    child.envs(child_env);
+
+    let status = child.status().context("running child process")?;
+    Ok(status.code().unwrap_or(1))
+}
+
+fn append_exec_audit(path: &Path, agent_id: &str, specs: &[ExecEnvVar]) -> Result<()> {
+    let event = serde_json::json!({
+        "kind": "exec_env",
+        "agent_id": agent_id,
+        "env_names": specs.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
+        "labels": specs.iter().map(|s| s.label.as_str()).collect::<Vec<_>>(),
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+    });
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .with_context(|| format!("opening audit {}", path.display()))?;
+    writeln!(file, "{event}").context("writing exec audit")?;
+    Ok(())
+}
+
+fn ensure_owner_only_path(path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(path)
+            .with_context(|| format!("stat {}", path.display()))?
+            .permissions()
+            .mode()
+            & 0o777;
+        if mode & 0o077 != 0 {
+            return Err(anyhow!(
+                "{} has insecure permissions {mode:o}; want owner-only",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn set_owner_only_file(_path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(_path, std::fs::Permissions::from_mode(0o600));
+    }
+}
+
+fn set_owner_only_dir(_path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(_path, std::fs::Permissions::from_mode(0o700));
+    }
 }
 
 fn print_metadata(m: &KeyMetadata) {
