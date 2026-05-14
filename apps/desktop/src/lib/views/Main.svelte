@@ -8,6 +8,7 @@
   import GitignoreHelperDialog from './GitignoreHelperDialog.svelte';
   import EnvExampleDialog from './EnvExampleDialog.svelte';
   import AuthDialog from './AuthDialog.svelte';
+  import McpPreflightDialog from './McpPreflightDialog.svelte';
 
   interface Props {
     onLocked: () => void;
@@ -26,6 +27,7 @@
   let showGitignore = $state(false);
   let showEnvExample = $state(false);
   let showAuth = $state(false);
+  let showMcp = $state(false);
   let confirmTarget = $state<KeyMetadataDto | null>(null);
   let initialDoctorPath = $state('');
 
@@ -157,6 +159,10 @@
       <button class="module-item nav-button" onclick={() => (showAuth = true)}>
         <span class="module-dot"></span>
         <span>Auth</span>
+      </button>
+      <button class="module-item nav-button" onclick={() => (showMcp = true)}>
+        <span class="module-dot"></span>
+        <span>MCP Preflight</span>
       </button>
     </nav>
 
@@ -341,6 +347,10 @@
     onSessionExpired={onSessionExpired}
     onToast={(message) => showToast(message)}
   />
+{/if}
+
+{#if showMcp}
+  <McpPreflightDialog onClose={() => (showMcp = false)} />
 {/if}
 
 {#if confirmTarget}

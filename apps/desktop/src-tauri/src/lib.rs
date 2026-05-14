@@ -1179,6 +1179,246 @@ fn scan_project_for_secrets(
     repo_scanner::scan_local_path(args)
 }
 
+// ── MCP Preflight commands (V0.5) ────────────────────────────────────────────
+//
+// IPC wrapper around the `mcp_preflight` analyzer module. Two surfaces:
+//   1. `analyze_mcp_config_cmd` — single-entry analyzer. Frontend pastes a
+//      JSON entry and gets back a verdict + findings.
+//   2. `analyze_claude_desktop_config_cmd` — batch analyzer over the
+//      `mcpServers` map in a Claude Desktop config file. Defaults to the
+//      standard macOS path; caller can override for testing.
+//
+// Both commands map the analyzer's typed error into a user-safe `String`
+// per the existing M2 pattern. The analyzer module itself does NO file
+// I/O; the file read lives here, in the IPC layer, where it can be
+// permission-checked by Tauri's allowlist if we tighten things later.
+
+/// Analyze a single MCP server config entry and return a verdict + findings.
+///
+/// `name` is optional — when supplied, it populates `report.server_name`
+/// so the frontend can render multi-server tables.
+#[tauri::command]
+fn analyze_mcp_config_cmd(
+    name: Option<String>,
+    json: String,
+) -> Result<mcp_preflight::McpPreflightReport, String> {
+    let result = match name.as_deref() {
+        Some(n) => mcp_preflight::analyze_mcp_config_named(n, &json),
+        None => mcp_preflight::analyze_mcp_config(&json),
+    };
+    result.map_err(map_mcp_preflight_error)
+}
+
+#[derive(Serialize, Debug)]
+pub struct McpPreflightBatchEntry {
+    pub server_name: String,
+    pub report: Option<mcp_preflight::McpPreflightReport>,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Debug)]
+pub struct McpPreflightBatchReport {
+    pub config_path: String,
+    pub config_found: bool,
+    pub entries: Vec<McpPreflightBatchEntry>,
+    pub parse_error: Option<String>,
+}
+
+/// Read a Claude Desktop–style config file and analyze every server entry
+/// under the `mcpServers` map.
+///
+/// `path` is optional — when omitted, defaults to the standard macOS path
+/// `~/Library/Application Support/Claude/claude_desktop_config.json`.
+///
+/// Returns a batch report with one entry per server. A per-server analyzer
+/// error becomes `entry.error`; a file-level read or parse error becomes
+/// `parse_error` at the top level.
+#[tauri::command]
+fn analyze_claude_desktop_config_cmd(
+    path: Option<String>,
+) -> Result<McpPreflightBatchReport, String> {
+    let config_path = match path {
+        Some(p) => PathBuf::from(p),
+        None => default_claude_desktop_config_path()?,
+    };
+    let path_str = config_path.display().to_string();
+
+    if !config_path.exists() {
+        return Ok(McpPreflightBatchReport {
+            config_path: path_str,
+            config_found: false,
+            entries: Vec::new(),
+            parse_error: None,
+        });
+    }
+
+    let content = std::fs::read_to_string(&config_path)
+        .map_err(|e| format!("could not read {path_str}: {e}"))?;
+
+    let parsed: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(e) => {
+            return Ok(McpPreflightBatchReport {
+                config_path: path_str,
+                config_found: true,
+                entries: Vec::new(),
+                parse_error: Some(format!("invalid JSON: {e}")),
+            });
+        }
+    };
+
+    let entries = parsed
+        .get("mcpServers")
+        .and_then(|v| v.as_object())
+        .map(|map| {
+            map.iter()
+                .map(|(name, entry_value)| {
+                    let entry_json = entry_value.to_string();
+                    match mcp_preflight::analyze_mcp_config_named(name, &entry_json) {
+                        Ok(report) => McpPreflightBatchEntry {
+                            server_name: name.clone(),
+                            report: Some(report),
+                            error: None,
+                        },
+                        Err(e) => McpPreflightBatchEntry {
+                            server_name: name.clone(),
+                            report: None,
+                            error: Some(map_mcp_preflight_error(e)),
+                        },
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(McpPreflightBatchReport {
+        config_path: path_str,
+        config_found: true,
+        entries,
+        parse_error: None,
+    })
+}
+
+fn default_claude_desktop_config_path() -> Result<PathBuf, String> {
+    let home = std::env::var("HOME").map_err(|_| "HOME env var not set".to_string())?;
+    Ok(PathBuf::from(home).join("Library/Application Support/Claude/claude_desktop_config.json"))
+}
+
+fn map_mcp_preflight_error(err: mcp_preflight::McpPreflightError) -> String {
+    match err {
+        mcp_preflight::McpPreflightError::InvalidJson(msg) => format!("Invalid JSON: {msg}"),
+        mcp_preflight::McpPreflightError::MissingField(field) => {
+            format!("Missing required field: {field}")
+        }
+        mcp_preflight::McpPreflightError::UnsupportedTransport(t) => {
+            format!("Unsupported transport: {t}")
+        }
+    }
+}
+
+#[cfg(test)]
+mod mcp_preflight_cmd_tests {
+    use super::*;
+
+    fn temp_path(label: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("holster-mcp-cmd-{label}-{nanos}.json"))
+    }
+
+    #[test]
+    fn analyze_mcp_config_cmd_with_valid_named_input_returns_report() {
+        let json = r#"{"command": "/usr/local/bin/server", "args": [], "env": {}}"#;
+        let result = analyze_mcp_config_cmd(Some("test-server".into()), json.into()).unwrap();
+        assert_eq!(result.server_name.as_deref(), Some("test-server"));
+    }
+
+    #[test]
+    fn analyze_mcp_config_cmd_with_invalid_json_returns_string_error() {
+        let result = analyze_mcp_config_cmd(None, "not json at all".into());
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.starts_with("Invalid JSON"), "got: {msg}");
+    }
+
+    #[test]
+    fn analyze_claude_desktop_config_cmd_missing_file_returns_not_found() {
+        let path = temp_path("missing");
+        let report = analyze_claude_desktop_config_cmd(Some(path.display().to_string())).unwrap();
+        assert!(!report.config_found);
+        assert!(report.entries.is_empty());
+        assert!(report.parse_error.is_none());
+    }
+
+    #[test]
+    fn analyze_claude_desktop_config_cmd_valid_config_returns_per_server_reports() {
+        let path = temp_path("valid");
+        let body = r#"{
+            "mcpServers": {
+                "fs": {
+                    "command": "npx",
+                    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp/FAKE"]
+                },
+                "safe": {
+                    "command": "/usr/local/bin/server-FAKE",
+                    "args": [],
+                    "env": {}
+                }
+            }
+        }"#;
+        std::fs::write(&path, body).unwrap();
+
+        let report = analyze_claude_desktop_config_cmd(Some(path.display().to_string())).unwrap();
+        assert!(report.config_found);
+        assert_eq!(report.entries.len(), 2);
+        for entry in &report.entries {
+            assert!(
+                entry.error.is_none(),
+                "entry {} had error: {:?}",
+                entry.server_name,
+                entry.error
+            );
+            assert!(entry.report.is_some());
+        }
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn analyze_claude_desktop_config_cmd_invalid_json_returns_parse_error_not_panic() {
+        let path = temp_path("badjson");
+        std::fs::write(&path, "not json").unwrap();
+
+        let report = analyze_claude_desktop_config_cmd(Some(path.display().to_string())).unwrap();
+        assert!(report.config_found);
+        assert!(
+            report.parse_error.is_some(),
+            "expected parse_error to be set"
+        );
+        assert!(report.entries.is_empty());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn map_mcp_preflight_error_covers_all_variants() {
+        let invalid =
+            map_mcp_preflight_error(mcp_preflight::McpPreflightError::InvalidJson("bad".into()));
+        assert!(invalid.contains("Invalid JSON"));
+
+        let missing =
+            map_mcp_preflight_error(mcp_preflight::McpPreflightError::MissingField("command"));
+        assert!(missing.contains("Missing required field"));
+
+        let unsupported = map_mcp_preflight_error(
+            mcp_preflight::McpPreflightError::UnsupportedTransport("websocket".into()),
+        );
+        assert!(unsupported.contains("Unsupported transport"));
+    }
+}
+
 // ── Application bootstrap ────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1207,6 +1447,8 @@ pub fn run() {
             list_totp_accounts,
             add_totp_account,
             get_totp_code,
+            analyze_mcp_config_cmd,
+            analyze_claude_desktop_config_cmd,
         ])
         .setup(|app| {
             // Eagerly resolve the default vault path so subsequent commands

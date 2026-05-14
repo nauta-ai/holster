@@ -519,3 +519,66 @@ export async function addTotpAccount(args: AddTotpAccountArgs): Promise<TotpAcco
 export async function getTotpCode(id: string): Promise<TotpCodeReport> {
   return await invoke<TotpCodeReport>('get_totp_code', { id });
 }
+
+// ── MCP Preflight (V0.5) ───────────────────────────────────────────────────
+
+export type Verdict = 'safe' | 'caution' | 'risky';
+export type Severity = 'info' | 'caution' | 'risk';
+export type Category = 'run' | 'share' | 'both';
+
+export interface PreflightFinding {
+  check: string;
+  severity: Severity;
+  category: Category;
+  message: string;
+  fix_hint: string | null;
+}
+
+export interface McpPreflightReport {
+  server_name: string | null;
+  run_verdict: Verdict;
+  share_verdict: Verdict;
+  findings: PreflightFinding[];
+  raw_command_summary: string;
+}
+
+export interface McpPreflightBatchEntry {
+  server_name: string;
+  report: McpPreflightReport | null;
+  error: string | null;
+}
+
+export interface McpPreflightBatchReport {
+  config_path: string;
+  config_found: boolean;
+  entries: McpPreflightBatchEntry[];
+  parse_error: string | null;
+}
+
+/**
+ * Analyze a single MCP server config entry.
+ *
+ * @param json — the raw JSON for the server entry (a single object, not the
+ *               outer `mcpServers` wrapper).
+ * @param name — optional human-friendly server name. When supplied, populates
+ *               `report.server_name` so multi-server tables can label rows.
+ */
+export async function analyzeMcpConfig(
+  json: string,
+  name: string | null = null
+): Promise<McpPreflightReport> {
+  return await invoke<McpPreflightReport>('analyze_mcp_config_cmd', { name, json });
+}
+
+/**
+ * Scan a Claude Desktop config file (defaults to the standard macOS path)
+ * and return a per-server analyzer report.
+ *
+ * `report.config_found === false` when the file doesn't exist (not an error;
+ * the user just doesn't have Claude Desktop installed or has no MCP servers).
+ */
+export async function analyzeClaudeDesktopConfig(
+  path: string | null = null
+): Promise<McpPreflightBatchReport> {
+  return await invoke<McpPreflightBatchReport>('analyze_claude_desktop_config_cmd', { path });
+}
