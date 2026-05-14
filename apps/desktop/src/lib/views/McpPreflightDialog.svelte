@@ -137,20 +137,31 @@
       // Clipboard write may fail outside Tauri; non-fatal.
     }
   }
+
+  function onBackdropClick(e: MouseEvent) {
+    if (e.target === e.currentTarget) onClose();
+  }
+
+  function onKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') onClose();
+  }
 </script>
 
-<div class="dialog-shell">
-  <header class="dialog-header">
-    <div>
-      <p class="eyebrow">Buildbelt safety check</p>
-      <h2>MCP Server Preflight</h2>
-      <p class="dialog-subtitle">
-        Deterministic local analysis. No network calls, no AI loop. Run and share verdicts are
-        scored separately because a config that's safe to fire locally can still leak when shared.
-      </p>
-    </div>
-    <button type="button" class="dialog-close" onclick={onClose} aria-label="Close">×</button>
-  </header>
+<svelte:window onkeydown={onKeydown} />
+
+<div class="modal-backdrop" role="presentation" onclick={onBackdropClick}>
+  <div class="modal mcp-modal" role="dialog" aria-modal="true" aria-labelledby="mcp-title">
+    <header class="dialog-header">
+      <div>
+        <p class="eyebrow">Buildbelt safety check</p>
+        <h2 id="mcp-title">MCP Server Preflight</h2>
+        <p class="dialog-subtitle">
+          Deterministic local analysis. No network calls, no AI loop. Run and share verdicts are
+          scored separately because a config that's safe to fire locally can still leak when shared.
+        </p>
+      </div>
+      <button type="button" class="dialog-close" onclick={onClose} aria-label="Close">×</button>
+    </header>
 
   <nav class="preflight-tabs" aria-label="Preflight mode">
     <button
@@ -386,9 +397,55 @@
       {/if}
     </section>
   {/if}
+  </div>
 </div>
 
 <style>
+  .mcp-modal {
+    max-width: 760px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: var(--spacing-xl, 24px);
+  }
+
+  .dialog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--spacing-md, 12px);
+    margin-bottom: var(--spacing-md, 12px);
+  }
+
+  .dialog-header h2 {
+    margin: 4px 0 6px;
+    font-size: 22px;
+  }
+
+  .dialog-subtitle {
+    color: var(--text-muted, #6c6c78);
+    line-height: 1.5;
+    margin: 0;
+    max-width: 60ch;
+  }
+
+  .dialog-close {
+    background: transparent;
+    border: none;
+    font-size: 24px;
+    line-height: 1;
+    color: var(--text-muted, #6c6c78);
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 6px;
+    transition: background 120ms ease;
+  }
+
+  .dialog-close:hover {
+    background: var(--surface-muted, #ece7dc);
+    color: var(--text, #1a1a1f);
+  }
+
   .preflight-tabs {
     display: flex;
     gap: var(--spacing-sm, 8px);
