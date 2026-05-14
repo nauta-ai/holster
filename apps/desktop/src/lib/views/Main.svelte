@@ -115,14 +115,14 @@
     return `${head}…${tail}`;
   }
 
-  function verdictTone(entry: ScanHistoryEntry): 'safe' | 'warn' | 'danger' {
+  function verdictTone(entry: ScanHistoryEntry): 'risk-safe' | 'risk-warn' | 'risk-danger' {
     const counts = entry.summary_by_risk_excluding_fixtures ?? {};
     const critical = counts.critical ?? 0;
     const high = counts.high ?? 0;
-    if (critical > 0 || high > 0) return 'danger';
+    if (critical > 0 || high > 0) return 'risk-danger';
     const medium = counts.medium ?? 0;
-    if (medium > 0) return 'warn';
-    return 'safe';
+    if (medium > 0) return 'risk-warn';
+    return 'risk-safe';
   }
 
   function verdictLabel(entry: ScanHistoryEntry): string {
@@ -234,18 +234,22 @@
         </section>
       {/if}
 
-      <section class="tool-strip" aria-label="Tools">
-        <button onclick={() => (showEnvExample = true)} title="Generate a committable .env.example template">
-          Generate .env.example
+      <section class="tool-grid" aria-label="Tools">
+        <button class="tool-card" onclick={() => (showEnvExample = true)}>
+          <span class="tool-card-title">Generate .env.example</span>
+          <span class="tool-card-sub">Committable template with placeholder values only.</span>
         </button>
-        <button onclick={() => (showGitignore = true)} title="Audit project .gitignore">
-          Review .gitignore
+        <button class="tool-card" onclick={() => (showGitignore = true)}>
+          <span class="tool-card-title">Review .gitignore</span>
+          <span class="tool-card-sub">Audit and atomically append credential-file patterns.</span>
         </button>
-        <button onclick={() => (showExport = true)} disabled={keys.length === 0} title="Export an agent runtime profile">
-          Export agent profile
+        <button class="tool-card" onclick={() => (showExport = true)} disabled={keys.length === 0}>
+          <span class="tool-card-title">Export agent profile</span>
+          <span class="tool-card-sub">Runtime profile for Codex, Claude Code, Cursor, or Hermes.</span>
         </button>
-        <button onclick={() => (showAuth = true)} title="Store 2FA codes in the vault">
-          Auth
+        <button class="tool-card" onclick={() => (showAuth = true)}>
+          <span class="tool-card-title">Auth · 2FA</span>
+          <span class="tool-card-sub">Store TOTP codes and backup codes in the vault.</span>
         </button>
       </section>
 

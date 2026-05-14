@@ -575,6 +575,50 @@ button.module-item {
   border-color: rgba(241, 184, 91, 0.35);
 }
 
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.tool-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  text-align: left;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.tool-card:hover:not(:disabled) {
+  border-color: var(--accent, #f1b85b);
+  background: var(--bg-panel);
+  transform: translateY(-1px);
+}
+
+.tool-card:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tool-card-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--fg);
+}
+
+.tool-card-sub {
+  font-size: 12px;
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+
 .tool-strip {
   display: flex;
   flex-wrap: wrap;
@@ -766,28 +810,34 @@ button.module-item {
   border-color: var(--border-strong, #C2BCAE);
   background: var(--surface-muted, #ECE7DC);
 }
-.scan-row.safe {
-  border-left: 3px solid var(--success, #2F7A4A);
+.scan-row.risk-safe {
+  border-left: 3px solid var(--success, #6ad48a);
+  background: var(--bg-elevated);
+  color: var(--fg);
 }
-.scan-row.warn {
-  border-left: 3px solid var(--accent, #B8781F);
+.scan-row.risk-warn {
+  border-left: 3px solid var(--accent, #f1b85b);
+  background: var(--bg-elevated);
+  color: var(--fg);
 }
-.scan-row.danger {
-  border-left: 3px solid var(--danger, #B04A30);
+.scan-row.risk-danger {
+  border-left: 3px solid var(--danger, #d4684a);
+  background: var(--bg-elevated);
+  color: var(--fg);
 }
 .scan-verdict {
   font-weight: 700;
   font-size: 13px;
   color: var(--fg);
 }
-.scan-row.safe .scan-verdict {
-  color: var(--success, #2F7A4A);
+.scan-row.risk-safe .scan-verdict {
+  color: var(--success, #6ad48a);
 }
-.scan-row.warn .scan-verdict {
-  color: var(--accent, #B8781F);
+.scan-row.risk-warn .scan-verdict {
+  color: var(--accent, #f1b85b);
 }
-.scan-row.danger .scan-verdict {
-  color: var(--danger, #B04A30);
+.scan-row.risk-danger .scan-verdict {
+  color: var(--danger, #d4684a);
 }
 .scan-path {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
