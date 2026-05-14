@@ -5,22 +5,34 @@
     gitignoreAudit,
     envExampleFromVault,
     listAgentProfiles,
+    isFixtureClassification,
     type AgentProfile,
     type EnvExampleProposal,
     type GitignoreAuditReport,
     type KeyMetadataDto,
+    type ScanDetection,
     type ScanReport,
     type ScanRiskLevel
   } from '$lib/api';
+  import { recordScan } from '$lib/scanHistory';
 
   interface Props {
     keys: KeyMetadataDto[];
     onClose: () => void;
     onSessionExpired: () => void;
+    initialPath?: string;
   }
-  let { keys, onClose, onSessionExpired }: Props = $props();
+  let { keys, onClose, onSessionExpired, initialPath = '' }: Props = $props();
 
   let projectPath = $state('');
+
+  // Initialize the path field from the prop when the dialog opens (or if the
+  // parent re-mounts with a different starting path).
+  $effect(() => {
+    if (initialPath) {
+      projectPath = initialPath;
+    }
+  });
   let busy = $state(false);
   let error = $state<string | null>(null);
   let scanReport = $state<ScanReport | null>(null);
@@ -28,7 +40,18 @@
   let envProposal = $state<EnvExampleProposal | null>(null);
   let profiles = $state<AgentProfile[]>([]);
 
-  const riskCounts = $derived.by(() => scanReport?.summary_by_risk ?? {});
+  // Risk counts the verdict + headline use — fixture-classified detections
+  // are kept in `summary_by_risk` (raw) but excluded here so the report
+  // doesn't flag a healthy repo with intentional test data as critical.
+  const riskCounts = $derived.by(() => scanReport?.summary_by_risk_excluding_fixtures ?? {});
+  const realFindingCount = $derived.by(() => scanReport?.real_finding_count ?? 0);
+  const fixtureFindingCount = $derived.by(() => scanReport?.fixture_finding_count ?? 0);
+  const realDetections = $derived.by<ScanDetection[]>(() =>
+    (scanReport?.detections ?? []).filter((d) => !isFixtureClassification(d.classification))
+  );
+  const fixtureDetections = $derived.by<ScanDetection[]>(() =>
+    (scanReport?.detections ?? []).filter((d) => isFixtureClassification(d.classification))
+  );
   const missingGitignoreLines = $derived.by(() => {
     if (!gitignoreReport) return 0;
     return gitignoreReport.rule_sets.reduce((total, set) => {
@@ -93,6 +116,11 @@
         respect_gitignore: false,
         max_file_size_bytes: 5_000_000
       });
+      // Record metadata-only history entry so the main view can list recent scans.
+      // recordScan stores no raw findings or values.
+      if (scanReport) {
+        recordScan(scanReport);
+      }
       gitignoreReport = await gitignoreAudit({ path: projectPath.trim() });
       profiles = await listAgentProfiles();
       if (keys.length > 0) {
@@ -145,8 +173,11 @@
       </div>
       <div class="doctor-verdict {verdict.tone}">
         <span>{verdict.label}</span>
-        <strong>{scanReport ? (scanReport.detections.length || 0) : '—'}</strong>
+        <strong>{scanReport ? realFindingCount : '—'}</strong>
         <small>findings</small>
+        {#if scanReport && fixtureFindingCount > 0}
+          <small class="fixture-note">+ {fixtureFindingCount} test fixture{fixtureFindingCount === 1 ? '' : 's'}</small>
+        {/if}
       </div>
     </div>
 
@@ -184,10 +215,10 @@
       </article>
       <article class="doctor-card">
         <span>Secrets</span>
-        <strong>{scanReport ? scanReport.detections.length : '—'}</strong>
+        <strong>{scanReport ? realFindingCount : '—'}</strong>
         <p>
           {#if scanReport}
-            {scanReport.scanned_files} files scanned in {fmtElapsed(scanReport.elapsed_ms)}
+            {scanReport.scanned_files} files scanned in {fmtElapsed(scanReport.elapsed_ms)}{fixtureFindingCount > 0 ? ` · ${fixtureFindingCount} test fixture${fixtureFindingCount === 1 ? '' : 's'} excluded from verdict` : ''}
           {:else}
             Redacted detector report
           {/if}
@@ -210,7 +241,7 @@
         <article class="doctor-panel">
           <div class="panel-head">
             <h3>Risk Breakdown</h3>
-            <span>{scanReport.detections.length} total</span>
+            <span>{realFindingCount} real{fixtureFindingCount > 0 ? ` · ${fixtureFindingCount} fixture${fixtureFindingCount === 1 ? '' : 's'}` : ''}</span>
           </div>
           <div class="risk-ladder">
             {#each ['critical', 'high', 'medium', 'low'] as risk}
@@ -228,32 +259,64 @@
             <span>local only</span>
           </div>
           <ol class="doctor-next">
-            {#if scanReport.detections.length > 0}
-          <li>Rotate or remove critical/high findings before granting agent access.</li>
-        {:else}
+            {#if realFindingCount > 0}
+              <li>Rotate or remove critical/high findings before granting agent access.</li>
+            {:else}
               <li>Secret detector pass is clean for this folder.</li>
-        {/if}
-        {#if missingGitignoreLines > 0}
+            {/if}
+            {#if missingGitignoreLines > 0}
               <li>Add the missing .gitignore protections before committing or sharing.</li>
-        {:else}
+            {:else}
               <li>.gitignore protections are already covered.</li>
-        {/if}
+            {/if}
             <li>Export a committable .env.example and agent profile for the next tool.</li>
+            {#if fixtureFindingCount > 0}
+              <li>Review the test-fixture panel below if any fixture is actually a real key.</li>
+            {/if}
           </ol>
         </article>
       </section>
 
-      {#if scanReport.detections.length > 0}
+      {#if realDetections.length > 0}
         <section class="doctor-panel">
           <div class="panel-head">
             <h3>Top Findings</h3>
             <span>no raw values</span>
           </div>
           <div class="doctor-findings">
-            {#each scanReport.detections.slice(0, 6) as finding}
+            {#each realDetections.slice(0, 6) as finding}
               <div class="doctor-finding">
                 <div>
                   <span class="chip {riskClass(finding.risk_level)}">{finding.risk_level}</span>
+                  <strong>{finding.display_name}</strong>
+                  <span class="provider-badge">{finding.provider}</span>
+                </div>
+                <code>{finding.file_path ?? '(unknown path)'}:{finding.line_number}</code>
+                <p>{finding.recommended_action}</p>
+              </div>
+            {/each}
+          </div>
+        </section>
+      {/if}
+
+      {#if fixtureDetections.length > 0}
+        <section class="doctor-panel doctor-panel-fixtures">
+          <div class="panel-head">
+            <h3>Test fixtures (informational)</h3>
+            <span>{fixtureDetections.length} excluded from verdict</span>
+          </div>
+          <p class="muted">
+            These match the secret patterns but live in test paths or use known
+            placeholder shapes (e.g. <code>sk-test-</code>, <code>FAKE</code>,
+            long zero runs). They don't drive the verdict — but if any one is
+            actually a real key that ended up in test code, treat it as a real
+            finding.
+          </p>
+          <div class="doctor-findings">
+            {#each fixtureDetections.slice(0, 6) as finding}
+              <div class="doctor-finding doctor-finding-fixture">
+                <div>
+                  <span class="chip risk-low">fixture</span>
                   <strong>{finding.display_name}</strong>
                   <span class="provider-badge">{finding.provider}</span>
                 </div>

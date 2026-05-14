@@ -162,7 +162,10 @@ async function mockInvoke<T>(command: string, args?: InvokeArgs): Promise<T> {
         detections: [],
         summary_by_detector: [],
         summary_by_risk: {},
+        summary_by_risk_excluding_fixtures: {},
         summary_by_provider: {},
+        real_finding_count: 0,
+        fixture_finding_count: 0,
         respect_gitignore: true,
         follow_symlinks: false
       } as T;
@@ -277,6 +280,14 @@ export async function exportRuntimeProfile(args: RuntimeExportArgs): Promise<Run
 export type ScanRiskLevel = 'critical' | 'high' | 'medium' | 'low';
 export type ScanTier = 'tier1' | 'tier2' | 'tier3';
 
+/**
+ * Whether a detection is a real-looking finding or a known test/fixture
+ * pattern. Mirrors the Rust `Classification` enum with snake_case
+ * serialization. Verdict + headline counts should exclude any value other
+ * than `real`.
+ */
+export type ScanClassification = 'real' | 'test_path' | 'test_value' | 'test_path_and_value';
+
 export interface ScanArgs {
   path: string;
   follow_symlinks: boolean;
@@ -302,6 +313,11 @@ export interface ScanDetection {
   recommended_action: string;
   rotation_url: string | null;
   docs_url: string | null;
+  classification: ScanClassification;
+}
+
+export function isFixtureClassification(c: ScanClassification): boolean {
+  return c !== 'real';
 }
 
 export interface ScanDetectorSummary {
@@ -323,8 +339,18 @@ export interface ScanReport {
   elapsed_ms: number;
   detections: ScanDetection[];
   summary_by_detector: ScanDetectorSummary[];
+  /** Risk counts across ALL detections including test fixtures. */
   summary_by_risk: Record<string, number>;
+  /**
+   * Risk counts excluding fixture-classified detections — this is what the
+   * verdict and headline number should consume.
+   */
+  summary_by_risk_excluding_fixtures: Record<string, number>;
   summary_by_provider: Record<string, number>;
+  /** Number of detections classified as `real`. */
+  real_finding_count: number;
+  /** Number of detections classified as any fixture variant. */
+  fixture_finding_count: number;
   respect_gitignore: boolean;
   follow_symlinks: boolean;
 }

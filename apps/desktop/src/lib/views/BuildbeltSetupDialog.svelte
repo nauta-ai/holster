@@ -8,11 +8,10 @@
 
   let { onClose, onOpenDoctor, startupMode = false, onStartupDone }: Props = $props();
   let activePath = $state<'buying' | 'starting' | 'workstation' | null>(null);
-  let audienceMode = $state<'personal' | 'business'>('personal');
   let activeLesson = $state(0);
-  let startupStep = $state<'chooser' | 'beginner' | 'guidedSignup' | 'businessRollout' | 'oldComputer' | 'buyingSystem' | 'full'>('full');
+  let startupStep = $state<'chooser' | 'beginner' | 'guidedSignup' | 'oldComputer' | 'buyingSystem' | 'full'>('full');
   let startupInitialized = $state(false);
-  let startupAudience = $state<'personal' | 'business' | null>(null);
+  let wizardStarted = $state(false);
   let wizardStep = $state(0);
   let selectedSubscription = $state<'chatgpt' | 'claude' | 'gemini'>('chatgpt');
   let copiedPrompt = $state<string | null>(null);
@@ -22,13 +21,6 @@
     security: false,
     recovery: false,
     noApi: false
-  });
-  let businessChecklist = $state({
-    owner: false,
-    tools: false,
-    security: false,
-    dataRules: false,
-    noStaffApi: false
   });
   let oldComputerChecklist = $state({
     updated: false,
@@ -135,47 +127,26 @@
     }
   ];
 
-  const modeDetails = $derived(audienceMode === 'personal'
-    ? {
-        label: 'Personal setup',
-        title: 'Start simple, protect your accounts, and avoid surprise API bills.',
-        copy: 'Best for family, friends, authors, creators, and curious beginners who want AI help without turning their computer into a science project.',
-        checkpoints: ['One paid subscription first', '2FA on important accounts', 'No loose API keys', 'Upgrade only after a repeated workflow'],
-        demo: [
-          {
-            title: 'The expensive mistake',
-            copy: 'A beginner buys hardware or opens API billing before they know what they actually need.'
-          },
-          {
-            title: 'The safer first month',
-            copy: 'Buildbelt points them to one predictable subscription, basic account safety, and clear rules for when not to create keys.'
-          },
-          {
-            title: 'The upgrade moment',
-            copy: 'When a real workflow appears, Holster stores keys locally and Safe Share checks projects before AI handoff.'
-          }
-        ]
+  const modeDetails = {
+    label: 'Personal setup',
+    title: 'Start simple, protect your accounts, and avoid surprise API bills.',
+    copy: 'Best for family, friends, authors, creators, and curious beginners who want AI help without turning their computer into a science project.',
+    checkpoints: ['One paid subscription first', '2FA on important accounts', 'No loose API keys', 'Upgrade only after a repeated workflow'],
+    demo: [
+      {
+        title: 'The expensive mistake',
+        copy: 'A beginner buys hardware or opens API billing before they know what they actually need.'
+      },
+      {
+        title: 'The safer first month',
+        copy: 'Buildbelt points them to one predictable subscription, basic account safety, and clear rules for when not to create keys.'
+      },
+      {
+        title: 'The upgrade moment',
+        copy: 'When a real workflow appears, Holster stores keys locally and Safe Share checks projects before AI handoff.'
       }
-    : {
-        label: 'Business setup',
-        title: 'Give the team a safe AI starting line before tools, keys, and client files spread everywhere.',
-        copy: 'Best for owners, managers, and small teams that need approved tools, account controls, billing guardrails, and safer project handoff.',
-        checkpoints: ['Approved AI tools list', '2FA and recovery codes', 'Named billing owner', 'Safe Share before client or contractor handoff'],
-        demo: [
-          {
-            title: 'The scattered rollout',
-            copy: 'Staff try random AI tools, create unmanaged accounts, and move client files without a shared safety path.'
-          },
-          {
-            title: 'The approved starting line',
-            copy: 'Buildbelt defines the first tools, account controls, billing owner, and what must stay off limits.'
-          },
-          {
-            title: 'The safe handoff',
-            copy: 'Holster keeps API keys owned and local, while Safe Share checks work before it leaves the machine.'
-          }
-        ]
-      });
+    ]
+  } as const;
 
   const journeyStages = [
     {
@@ -216,12 +187,6 @@
       label: 'Know what I want',
       title: 'I am buying a system for AI',
       copy: 'Use a clear checklist so the purchase matches your actual AI workload.'
-    },
-    {
-      id: 'business',
-      label: 'Business or team',
-      title: 'Set up AI for a small team',
-      copy: 'Approve tools, billing, account safety, and file rules before everyone starts experimenting.'
     }
   ] as const;
 
@@ -267,7 +232,6 @@
       prompt: 'Explain AI subscriptions, API billing, local AI, and agents like I am brand new. Tell me what to avoid for now.'
     }
   ];
-  const businessRolloutPrompt = 'I own or manage a small business and want my team to start using AI safely. Ask me seven questions about our work, client data, staff roles, and budget. Then recommend a simple approved AI tool list, billing owner, 2FA rules, file sharing rules, and what staff should not do yet. Do not recommend staff API keys.';
   const oldComputerPrompt = 'I have an older computer and I want to start using AI without wasting money. Ask me what operating system I have, how old the computer is, how much RAM and storage it has, what browser I use, and what I want AI to help with. Then tell me if I should start with browser AI tools, what to update first, what not to install yet, and when a new computer would actually be worth buying.';
   const buyingSystemPrompt = 'I am thinking about buying a computer for AI. Ask me what I want AI to do: writing, documents, coding, image work, video work, local models, business automation, or agents. Then tell me whether I should keep using browser AI, buy a normal strong computer, or consider a local AI workstation. Explain the tradeoffs in plain English and do not recommend API keys until there is a real workflow.';
 
@@ -281,13 +245,6 @@
       && signupChecklist.security
       && signupChecklist.recovery
       && signupChecklist.noApi
-  );
-  const businessReadyToPark = $derived(
-    businessChecklist.owner
-      && businessChecklist.tools
-      && businessChecklist.security
-      && businessChecklist.dataRules
-      && businessChecklist.noStaffApi
   );
   const oldComputerReadyToPark = $derived(
     oldComputerChecklist.updated
@@ -303,7 +260,7 @@
       && buyingSystemChecklist.specs
       && buyingSystemChecklist.noApi
   );
-  const wizardTotal = $derived(startupAudience === 'business' ? 5 : startupAudience === 'personal' ? 6 : 1);
+  const wizardTotal = 6;
   const modelLabel = $derived(currentSubscription.label);
   const currentLesson = $derived(startingLessons[activeLesson]);
   const pathLabel = $derived(activePath === 'buying'
@@ -312,9 +269,7 @@
       ? 'First $20 month'
       : 'Workstation');
   const nextMove = $derived(activePath === 'buying'
-    ? (audienceMode === 'personal'
-      ? 'Start with one subscription and use the computer you already have.'
-      : 'Name the approved tools, billing owner, and account rules before buying hardware.')
+    ? 'Start with one subscription and use the computer you already have.'
     : activePath === 'starting'
       ? 'Finish the five lessons, then decide whether an API key is truly needed.'
       : 'Run Safe Share Doctor before adding keys or handing files to an AI tool.');
@@ -343,16 +298,10 @@
     if (path === 'starting') activeLesson = 0;
   }
 
-  function chooseStartup(step: 'beginner' | 'oldComputer' | 'buyingSystem' | 'business') {
+  function chooseStartup(step: 'beginner' | 'oldComputer' | 'buyingSystem') {
     if (step === 'beginner') setPath('starting');
     if (step === 'oldComputer') setPath('buying');
     if (step === 'buyingSystem') setPath('workstation');
-    if (step === 'business') {
-      audienceMode = 'business';
-      setPath('buying');
-      startupStep = 'businessRollout';
-      return;
-    }
     startupStep = step;
   }
 
@@ -374,13 +323,6 @@
       recovery: false,
       noApi: false
     };
-    businessChecklist = {
-      owner: false,
-      tools: false,
-      security: false,
-      dataRules: false,
-      noStaffApi: false
-    };
     oldComputerChecklist = {
       updated: false,
       browser: false,
@@ -396,7 +338,7 @@
       noApi: false
     };
     selectedSubscription = 'chatgpt';
-    startupAudience = null;
+    wizardStarted = false;
     wizardStep = 0;
     startupStep = 'chooser';
     try {
@@ -413,11 +355,10 @@
       if (!raw) return;
       const progress = JSON.parse(raw);
       if (isStartupStep(progress.startupStep)) startupStep = progress.startupStep;
-      if (progress.startupAudience === 'personal' || progress.startupAudience === 'business') startupAudience = progress.startupAudience;
+      if (typeof progress.wizardStarted === 'boolean') wizardStarted = progress.wizardStarted;
       if (Number.isInteger(progress.wizardStep)) wizardStep = Math.max(0, progress.wizardStep);
       if (progress.selectedSubscription) selectedSubscription = progress.selectedSubscription;
       if (progress.signupChecklist) signupChecklist = { ...signupChecklist, ...progress.signupChecklist };
-      if (progress.businessChecklist) businessChecklist = { ...businessChecklist, ...progress.businessChecklist };
       if (progress.oldComputerChecklist) oldComputerChecklist = { ...oldComputerChecklist, ...progress.oldComputerChecklist };
       if (progress.buyingSystemChecklist) buyingSystemChecklist = { ...buyingSystemChecklist, ...progress.buyingSystemChecklist };
     } catch {
@@ -429,11 +370,10 @@
     try {
       localStorage.setItem(startupProgressKey, JSON.stringify({
         startupStep,
-        startupAudience,
+        wizardStarted,
         wizardStep,
         selectedSubscription,
         signupChecklist,
-        businessChecklist,
         oldComputerChecklist,
         buyingSystemChecklist
       }));
@@ -446,7 +386,6 @@
     return value === 'chooser'
       || value === 'beginner'
       || value === 'guidedSignup'
-      || value === 'businessRollout'
       || value === 'oldComputer'
       || value === 'buyingSystem';
   }
@@ -456,21 +395,20 @@
     activePath = null;
   }
 
-  function chooseWizardAudience(audience: 'personal' | 'business') {
-    startupAudience = audience;
-    audienceMode = audience;
+  function startWizard() {
+    wizardStarted = true;
     wizardStep = 0;
   }
 
   function nextWizardStep() {
-    if (!startupAudience) return;
+    if (!wizardStarted) return;
     wizardStep = Math.min(wizardStep + 1, wizardTotal - 1);
   }
 
   function previousWizardStep() {
-    if (!startupAudience) return;
+    if (!wizardStarted) return;
     if (wizardStep === 0) {
-      startupAudience = null;
+      wizardStarted = false;
       return;
     }
     wizardStep = Math.max(wizardStep - 1, 0);
@@ -562,25 +500,16 @@
     {#if startupStep !== 'full'}
       {#if true}
         <section class="startup-wizard" aria-label="Buildbelt startup wizard">
-          {#if !startupAudience}
+          {#if !wizardStarted}
             <div class="wizard-step-label">Step 1</div>
-            <h3>Is this for you or a business?</h3>
-            <p>Pick one. Buildbelt will show one step at a time.</p>
-            <div class="wizard-choice-grid two">
-              <button type="button" onclick={() => chooseWizardAudience('personal')}>
-                <strong>Personal</strong>
-                <span>Start using AI yourself.</span>
-              </button>
-              <button type="button" onclick={() => chooseWizardAudience('business')}>
-                <strong>Business</strong>
-                <span>Set rules before a team starts.</span>
-              </button>
-            </div>
+            <h3>Begin your AI safety setup.</h3>
+            <p>Buildbelt will walk you through one step at a time. Five quick steps, then you stop and use AI for real work.</p>
             <div class="wizard-actions">
+              <button type="button" class="primary" onclick={startWizard}>Begin</button>
               <button type="button" class="ghost" onclick={showFullGuide}>Full guide</button>
               <button type="button" class="ghost" onclick={finishStartup}>Skip startup</button>
             </div>
-          {:else if startupAudience === 'personal'}
+          {:else}
             <div class="wizard-step-label">Step {wizardStep + 2} of {wizardTotal + 1}</div>
             {#if wizardStep === 0}
               <h3>Can AI help you?</h3>
@@ -641,51 +570,6 @@
               <div class="startup-parked compact">
                 <strong>Done for now.</strong>
                 <p>Use AI for normal work this week. Come back when you know what you want to do repeatedly.</p>
-              </div>
-            {/if}
-            <div class="wizard-actions">
-              <button type="button" class="ghost" onclick={previousWizardStep}>Back</button>
-              {#if wizardStep < wizardTotal - 1}
-                <button type="button" class="primary" onclick={nextWizardStep}>Next</button>
-              {:else}
-                <button type="button" class="primary" onclick={finishStartup}>Done</button>
-              {/if}
-            </div>
-          {:else}
-            <div class="wizard-step-label">Step {wizardStep + 2} of {wizardTotal + 1}</div>
-            {#if wizardStep === 0}
-              <h3>Can AI help your business?</h3>
-              <p>Yes, but start with rules before staff use random tools.</p>
-              <div class="wizard-one-card">
-                <strong>Goal</strong>
-                <span>Let the team test AI without losing control of files, accounts, or cost.</span>
-              </div>
-            {:else if wizardStep === 1}
-              <h3>Pick approved tools.</h3>
-              <p>Choose one or two official AI apps. Write down what each is allowed for.</p>
-              <div class="wizard-one-card">
-                <strong>Keep it small</strong>
-                <span>One approved starting tool beats ten unmanaged experiments.</span>
-              </div>
-            {:else if wizardStep === 2}
-              <h3>Name the owner.</h3>
-              <p>One person owns billing, recovery codes, admin access, and offboarding.</p>
-              <div class="wizard-one-card">
-                <strong>Protect access</strong>
-                <span>Require 2FA or passkeys for every user.</span>
-              </div>
-            {:else if wizardStep === 3}
-              <h3>Set file rules.</h3>
-              <p>Decide what client files, contracts, private notes, and customer data cannot be pasted into AI.</p>
-              <button type="button" class="ghost prompt-copy" onclick={() => copyPrompt('business', businessRolloutPrompt)}>
-                {copiedPrompt === 'business' ? 'Copied' : 'Copy policy prompt'}
-              </button>
-            {:else}
-              <h3>Park the team here.</h3>
-              <p>No staff API keys. No unattended agents. No client folders connected yet.</p>
-              <div class="startup-parked compact">
-                <strong>Safe starting line.</strong>
-                <p>Let the team use approved AI for normal work first. Come back when a repeated workflow is proven.</p>
               </div>
             {/if}
             <div class="wizard-actions">
@@ -839,78 +723,6 @@
             <button type="button" class="primary" onclick={finishStartup}>Done with startup</button>
           </div>
         </section>
-      {:else if startupStep === 'businessRollout'}
-        <section class="startup-focus" aria-label="Business AI rollout">
-          <span>Business setup</span>
-          <h3>Approve the AI starting line before the team scatters.</h3>
-          <p>
-            Buildbelt helps the owner pick approved tools, name who owns billing,
-            require account security, and pause staff before API keys or client-file handoffs.
-          </p>
-          <div class="choice-guide" aria-label="Business rollout rules">
-            <article>
-              <strong>Approve tools first</strong>
-              <p>Pick one or two official AI apps the team may use, and write down what each is for.</p>
-            </article>
-            <article>
-              <strong>Name the owner</strong>
-              <p>Choose who controls billing, admin access, recovery codes, and employee offboarding.</p>
-            </article>
-            <article>
-              <strong>Protect client work</strong>
-              <p>Decide what files, contracts, customer data, and private notes cannot be pasted into AI.</p>
-            </article>
-          </div>
-          <div class="first-prompt-card" aria-label="Business rollout prompt">
-            <span>Owner prompt</span>
-            <strong>Use AI to draft the team starting policy.</strong>
-            <p>{businessRolloutPrompt}</p>
-            <button type="button" class="ghost prompt-copy" onclick={() => copyPrompt('business', businessRolloutPrompt)}>
-              {copiedPrompt === 'business' ? 'Copied' : 'Copy prompt'}
-            </button>
-          </div>
-          <div class="startup-checklist" aria-label="Business rollout checklist" onchange={saveStartupProgress}>
-            <strong>Team park checklist</strong>
-            <label>
-              <input type="checkbox" bind:checked={businessChecklist.owner} />
-              <span>Billing and account owner named</span>
-            </label>
-            <label>
-              <input type="checkbox" bind:checked={businessChecklist.tools} />
-              <span>Approved AI tools chosen for the team</span>
-            </label>
-            <label>
-              <input type="checkbox" bind:checked={businessChecklist.security} />
-              <span>2FA or passkeys required for every user</span>
-            </label>
-            <label>
-              <input type="checkbox" bind:checked={businessChecklist.dataRules} />
-              <span>Client-file and private-data rules written down</span>
-            </label>
-            <label>
-              <input type="checkbox" bind:checked={businessChecklist.noStaffApi} />
-              <span>No staff API keys or unattended agents yet</span>
-            </label>
-          </div>
-          {#if businessReadyToPark}
-            <div class="startup-parked" aria-label="Business rollout parked">
-              <strong>The team has a safe starting line.</strong>
-              <p>Let staff use the approved app for normal work first. Bring Buildbelt back when a repeated workflow needs keys, agents, or file handoff.</p>
-            </div>
-          {/if}
-          <div class="startup-hold">
-            <strong>Stop point</strong>
-            <p>
-              Do not create shared API keys, connect client folders, or let agents run
-              until the team has one proven workflow and an owner watching cost and access.
-            </p>
-          </div>
-          <div class="startup-actions">
-            <button type="button" class="ghost" onclick={() => (startupStep = 'chooser')}>Back</button>
-            <button type="button" class="ghost" onclick={showFullGuide}>Show full business guide</button>
-            <button type="button" class="primary" onclick={finishStartup}>Done with startup</button>
-          </div>
-        </section>
       {:else if startupStep === 'oldComputer'}
         <section class="startup-focus" aria-label="Old computer startup">
           <span>Use what you have</span>
@@ -1057,27 +869,11 @@
         </section>
       {/if}
     {:else}
-    <section class="buildbelt-mode" aria-label="Buildbelt setup mode">
+    <section class="buildbelt-mode" aria-label="Buildbelt setup overview">
       <div>
         <span>{modeDetails.label}</span>
         <strong>{modeDetails.title}</strong>
         <p>{modeDetails.copy}</p>
-      </div>
-      <div class="mode-switch" role="group" aria-label="Personal or business mode">
-        <button
-          type="button"
-          class:active={audienceMode === 'personal'}
-          onclick={() => (audienceMode = 'personal')}
-        >
-          Personal
-        </button>
-        <button
-          type="button"
-          class:active={audienceMode === 'business'}
-          onclick={() => (audienceMode = 'business')}
-        >
-          Business
-        </button>
       </div>
     </section>
 
@@ -1112,11 +908,9 @@
           </div>
           <div class="buying-verdict">
             <span>Buildbelt recommendation</span>
-            <strong>{audienceMode === 'personal' ? 'Subscribe first. Buy later with a real workflow.' : 'Approve tools first. Buy hardware after the workflow is proven.'}</strong>
+            <strong>Subscribe first. Buy later with a real workflow.</strong>
             <p>
-              {audienceMode === 'personal'
-                ? 'Most beginners do not need an expensive AI computer on day one. They need one predictable AI month, account safety, and a clear reason to graduate into APIs or local tools.'
-                : 'Most small teams do not need every employee opening their own tools and keys. They need an approved starting stack, a billing owner, account safety, and a clear handoff process.'}
+              Most beginners do not need an expensive AI computer on day one. They need one predictable AI month, account safety, and a clear reason to graduate into APIs or local tools.
             </p>
           </div>
           <div class="mode-checkpoints">
@@ -1127,7 +921,7 @@
           <div class="demo-flow" aria-label="Founder demo flow">
             <div class="panel-head">
               <h3>Three-minute demo</h3>
-              <span>{audienceMode}</span>
+              <span>personal</span>
             </div>
             <div>
               {#each modeDetails.demo as step, index}
