@@ -30,7 +30,9 @@ use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
-use crate::detectors::{scan_text, Detection, RiskLevel, Tier};
+use crate::detectors::{
+    detector_for_id, recommendation_for, scan_text, Classification, Detection, RiskLevel, Tier,
+};
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -70,8 +72,22 @@ pub struct ScanReport {
     pub elapsed_ms: u64,
     pub detections: Vec<Detection>,
     pub summary_by_detector: Vec<DetectorSummary>,
+    /// Risk counts across ALL detections, including test fixtures. Preserved
+    /// for back-compat with any consumer that wants the raw detector total.
     pub summary_by_risk: HashMap<String, usize>,
+    /// Risk counts excluding `Classification::is_fixture` detections. THIS
+    /// is the count the verdict and headline number should use — it filters
+    /// out test paths and fixture-shaped values so a healthy repo with
+    /// intentional test data reads as healthy.
+    pub summary_by_risk_excluding_fixtures: HashMap<String, usize>,
     pub summary_by_provider: HashMap<String, usize>,
+    /// Count of detections whose classification is `Real` (real-looking
+    /// finding in real source). This is the headline number the UI should
+    /// show — not `detections.len()`.
+    pub real_finding_count: usize,
+    /// Count of detections classified as any fixture variant. UI surfaces
+    /// these in a separate "Test fixtures (informational)" panel.
+    pub fixture_finding_count: usize,
     pub respect_gitignore: bool,
     pub follow_symlinks: bool,
 }
@@ -98,6 +114,29 @@ const ALWAYS_SKIP_DIRS: &[&str] = &[
     ".cache",
     ".turbo",
     ".pnpm-store",
+];
+
+/// Path components that strongly suggest test/fixture/example code rather
+/// than production source. Findings under these directories are still
+/// detected and reported, but reclassified as fixtures so they don't
+/// inflate the verdict or the headline finding count.
+///
+/// Match is on a single path component name, case-insensitive.
+const TEST_PATH_COMPONENTS: &[&str] = &[
+    "tests",
+    "test",
+    "examples",
+    "example",
+    "spec",
+    "specs",
+    "__tests__",
+    "__mocks__",
+    "fixtures",
+    "fixture",
+    "testdata",
+    "test_data",
+    "test-data",
+    "mocks",
 ];
 
 // ── Public entry point ──────────────────────────────────────────────────────
@@ -232,9 +271,26 @@ pub fn scan_local_path(args: ScanArgs) -> Result<ScanReport, String> {
         let abs_path = path.to_path_buf();
         let is_tracked = tracked_files.contains(&abs_path);
 
+        let path_is_test = is_test_path(&rel_display);
+        let path_is_self_ref = is_self_reference_path(&rel_display);
         for d in &mut file_dets {
             d.file_path = Some(rel_display.clone());
             d.git_tracked = Some(is_tracked);
+            // Upgrade the classification with path information that
+            // `scan_text` (which only sees the raw value) couldn't know.
+            // `path_is_self_ref` is treated as a test-equivalent so AEO docs
+            // and detector source samples get fixture-classified instead of
+            // driving the verdict.
+            if path_is_test || path_is_self_ref {
+                d.classification = match d.classification {
+                    Classification::Real => Classification::TestPath,
+                    Classification::TestValue => Classification::TestPathAndValue,
+                    other => other, // already a path-aware variant; leave as-is
+                };
+                if let Some(det) = detector_for_id(d.secret_type) {
+                    d.recommended_action = recommendation_for(det, d.classification);
+                }
+            }
         }
         detections.extend(file_dets);
 
@@ -244,6 +300,13 @@ pub fn scan_local_path(args: ScanArgs) -> Result<ScanReport, String> {
     }
 
     let (summary_by_detector, summary_by_risk, summary_by_provider) = build_summaries(&detections);
+    let summary_by_risk_excluding_fixtures =
+        build_risk_summary(detections.iter().filter(|d| !d.classification.is_fixture()));
+    let real_finding_count = detections
+        .iter()
+        .filter(|d| !d.classification.is_fixture())
+        .count();
+    let fixture_finding_count = detections.len() - real_finding_count;
 
     Ok(ScanReport {
         root_path: canonical.display().to_string(),
@@ -256,7 +319,10 @@ pub fn scan_local_path(args: ScanArgs) -> Result<ScanReport, String> {
         detections,
         summary_by_detector,
         summary_by_risk,
+        summary_by_risk_excluding_fixtures,
         summary_by_provider,
+        real_finding_count,
+        fixture_finding_count,
         respect_gitignore: args.respect_gitignore,
         follow_symlinks: args.follow_symlinks,
     })
@@ -298,6 +364,85 @@ fn is_in_skip_dir(path: &Path) -> bool {
             false
         }
     })
+}
+
+/// True if `rel_path` looks like a test, example, or fixture path.
+///
+/// Checks two things:
+///   1. Any path component matches a known test directory name
+///      (`tests/`, `examples/`, `__tests__/`, `fixtures/`, etc.).
+///   2. Filename matches a per-language test convention (`*_test.rs`,
+///      `test_*.py`, `*.test.ts`, `*.spec.js`, etc.).
+///
+/// Case-insensitive throughout. Operates on a relative path string (not a
+/// `Path`) so the M3 scanner can pass the same display string the UI sees.
+pub fn is_test_path(rel_path: &str) -> bool {
+    // Normalize to forward slashes (Windows tolerance) and lowercase.
+    let normalized = rel_path.replace('\\', "/").to_ascii_lowercase();
+
+    // Component check.
+    for component in normalized.split('/') {
+        if TEST_PATH_COMPONENTS.contains(&component) {
+            return true;
+        }
+    }
+
+    // Filename suffix / prefix conventions.
+    let filename = normalized.rsplit('/').next().unwrap_or(&normalized);
+    if filename.ends_with("_test.rs")
+        || filename.ends_with("_test.py")
+        || filename.ends_with("_test.go")
+        || filename.ends_with(".test.ts")
+        || filename.ends_with(".test.tsx")
+        || filename.ends_with(".test.js")
+        || filename.ends_with(".test.jsx")
+        || filename.ends_with(".spec.ts")
+        || filename.ends_with(".spec.tsx")
+        || filename.ends_with(".spec.js")
+        || filename.ends_with(".spec.jsx")
+        || filename.ends_with("_spec.rb")
+        || filename.starts_with("test_")
+        || filename.starts_with("tests_")
+    {
+        return true;
+    }
+
+    false
+}
+
+/// True if `rel_path` is a self-reference path — Doctor's own AEO/marketing
+/// docs that intentionally embed example secret-shapes ("YOUR_KEY_HERE",
+/// "your-project-id") for educational purposes, OR Doctor's own detector
+/// source files that contain regex/pattern samples by design.
+///
+/// Treating these as Fixture (rather than Real) prevents Doctor from giving
+/// itself a "Not handoff-ready" verdict on its own repo, which would
+/// undermine the wedge in tester-facing demos. Tier-0 self-test 2026-05-11
+/// surfaced this — see Operations/AgentOps/Revenue/2026-05-11-holster-doctor-tier-0-findings.md.
+///
+/// Three categories:
+///   1. `automation-output/` prefix — AEO documentation showing example
+///      leaks alongside redacted-replacement examples.
+///   2. `marketing-artifacts/` prefix — Nauta-AI marketing/AEO docs with
+///      example tokens; same family as automation-output/, different repo.
+///   3. `apps/desktop/src-tauri/src/detectors.rs` — the detector source
+///      itself, which embeds pattern samples to drive its own regex tests.
+///
+/// Case-insensitive throughout. Path-prefix match only — no component
+/// scan — because both categories are file-or-directory prefixes, not
+/// reusable test-style component names.
+pub fn is_self_reference_path(rel_path: &str) -> bool {
+    let normalized = rel_path.replace('\\', "/").to_ascii_lowercase();
+    if normalized.starts_with("automation-output/") {
+        return true;
+    }
+    if normalized.starts_with("marketing-artifacts/") {
+        return true;
+    }
+    if normalized == "apps/desktop/src-tauri/src/detectors.rs" {
+        return true;
+    }
+    false
 }
 
 fn collect_git_tracked(canonical: &Path) -> HashSet<PathBuf> {
@@ -367,6 +512,22 @@ fn build_summaries(
     });
 
     (by_detector, by_risk, by_provider)
+}
+
+/// Build only the by-risk count map from an iterator of detections. Used
+/// to compute `summary_by_risk_excluding_fixtures` without re-walking the
+/// whole detection list to rebuild the by_detector and by_provider maps.
+fn build_risk_summary<'a, I>(detections: I) -> HashMap<String, usize>
+where
+    I: IntoIterator<Item = &'a Detection>,
+{
+    let mut by_risk: HashMap<String, usize> = HashMap::new();
+    for d in detections {
+        *by_risk
+            .entry(risk_to_str(d.risk_level).to_string())
+            .or_insert(0) += 1;
+    }
+    by_risk
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -707,6 +868,255 @@ mod tests {
             report.detections
         );
         assert!(report.scanned_files >= 3);
+        assert_eq!(report.real_finding_count, 0);
+        assert_eq!(report.fixture_finding_count, 0);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── Classification: path-based ──────────────────────────────────────────
+
+    #[test]
+    fn is_test_path_recognizes_common_conventions() {
+        // Path-component matches.
+        assert!(is_test_path("crates/foo/tests/integration.rs"));
+        assert!(is_test_path("apps/cli/test/runner.rs"));
+        assert!(is_test_path("crates/foo/examples/demo.rs"));
+        assert!(is_test_path("examples/example.rs"));
+        assert!(is_test_path("packages/ui/__tests__/Button.tsx"));
+        assert!(is_test_path("src/__mocks__/api.ts"));
+        assert!(is_test_path("tests/fixtures/sample.json"));
+        assert!(is_test_path("data/testdata/case1.json"));
+        // Filename-suffix matches.
+        assert!(is_test_path("internal/handler_test.go"));
+        assert!(is_test_path("pkg/utils_test.py"));
+        assert!(is_test_path("src/components/Button.test.tsx"));
+        assert!(is_test_path("src/api/client.spec.ts"));
+        assert!(is_test_path("scripts/test_pipeline.py"));
+        // Real-source negatives.
+        assert!(!is_test_path("src/main.rs"));
+        assert!(!is_test_path("apps/desktop/src/lib/views/Main.svelte"));
+        assert!(!is_test_path("crates/holster-vault/src/vault.rs"));
+        assert!(!is_test_path("README.md"));
+        assert!(!is_test_path(".env"));
+    }
+
+    #[test]
+    fn is_self_reference_path_covers_aeo_docs_and_detector_source() {
+        // automation-output/ — AEO/marketing docs with intentional examples
+        assert!(is_self_reference_path(
+            "automation-output/2026-05-07-121432-foo.md"
+        ));
+        assert!(is_self_reference_path(
+            "automation-output/sub/dir/anything.md"
+        ));
+        assert!(is_self_reference_path(
+            "AUTOMATION-OUTPUT/case-insensitive.md"
+        ));
+        // marketing-artifacts/ — same family as automation-output/
+        assert!(is_self_reference_path(
+            "marketing-artifacts/2026-05-06-164750-foo.md"
+        ));
+        assert!(is_self_reference_path(
+            "MARKETING-ARTIFACTS/case-insensitive.md"
+        ));
+        // detector source — contains pattern samples by design
+        assert!(is_self_reference_path(
+            "apps/desktop/src-tauri/src/detectors.rs"
+        ));
+        // Real source must NOT be flagged
+        assert!(!is_self_reference_path(
+            "apps/desktop/src-tauri/src/main.rs"
+        ));
+        assert!(!is_self_reference_path(
+            "apps/desktop/src-tauri/src/repo_scanner.rs"
+        ));
+        assert!(!is_self_reference_path("crates/holster-vault/src/vault.rs"));
+        assert!(!is_self_reference_path("README.md"));
+        // Test/fixture paths are NOT self-reference (they have their own
+        // path category in is_test_path).
+        assert!(!is_self_reference_path("crates/foo/tests/integration.rs"));
+    }
+
+    #[test]
+    fn detection_in_test_path_is_classified_as_fixture() {
+        let dir = unique_tempdir("path-fixture");
+        // Same shape, two locations. Values are kept under 40 chars total
+        // so they DON'T trigger the high_entropy_generic_fallback detector
+        // (which requires ≥40 chars after _KEY=) — keeping the test focused
+        // on the openai detector + classification logic, not aggregation.
+        // The src/ value is non-fixture-shaped; the tests/ value contains
+        // "fake" so it'll classify as TestValue from the value classifier
+        // and then upgrade to TestPathAndValue from the path classifier.
+        //
+        // String literals are split via concat! so this source file
+        // (which itself lives at src/repo_scanner.rs) does not self-trip
+        // the repo scanner with the non-fixture-shaped value.
+        mk(
+            &dir,
+            "tests/integration.rs",
+            concat!("let k = \"sk-", "fakefakefakefakefakefakefakefa\";"),
+        );
+        mk(
+            &dir,
+            "src/config.rs",
+            concat!("let k = \"sk-", "prodprodprodprodprodprodprodpro\";"),
+        );
+        let report = run(&dir);
+
+        // Find each detection.
+        let in_tests = report
+            .detections
+            .iter()
+            .find(|d| d.file_path.as_deref() == Some("tests/integration.rs"))
+            .expect("detection in tests/ path");
+        let in_src = report
+            .detections
+            .iter()
+            .find(|d| d.file_path.as_deref() == Some("src/config.rs"))
+            .expect("detection in src/ path");
+
+        assert!(
+            in_tests.classification.is_fixture(),
+            "tests/ should be fixture: {in_tests:?}"
+        );
+        assert!(
+            !in_src.classification.is_fixture(),
+            "src/ should be real: {in_src:?}"
+        );
+
+        // Verify recommendation text differs.
+        assert_ne!(
+            in_tests.recommended_action, in_src.recommended_action,
+            "test-path and real-path findings should get different recommendations"
+        );
+
+        // The summary excluding fixtures must NOT count the tests/ finding.
+        let real_critical = *report
+            .summary_by_risk_excluding_fixtures
+            .get("critical")
+            .unwrap_or(&0);
+        let total_critical = *report.summary_by_risk.get("critical").unwrap_or(&0);
+        assert_eq!(
+            total_critical, 2,
+            "raw summary_by_risk includes both findings"
+        );
+        assert_eq!(
+            real_critical, 1,
+            "excluding-fixtures summary drops the test-path finding"
+        );
+        assert_eq!(report.real_finding_count, 1);
+        assert_eq!(report.fixture_finding_count, 1);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── Classification: value-pattern ───────────────────────────────────────
+
+    #[test]
+    fn detection_with_test_value_pattern_is_classified_fixture() {
+        let dir = unique_tempdir("value-fixture");
+        // Real source path, but the value uses the canonical sk-test- prefix
+        // — should be classified as TestValue, not Real.
+        mk(
+            &dir,
+            "src/legit.rs",
+            "OPENAI_API_KEY=sk-test-FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0",
+        );
+        let report = run(&dir);
+        let det = report
+            .detections
+            .iter()
+            .find(|d| d.secret_type == "openai_api_key")
+            .expect("detector should fire on the sk-test- value");
+        assert!(
+            det.classification.is_fixture(),
+            "sk-test- prefix should be classified as fixture even in real source path: {det:?}"
+        );
+        assert_eq!(report.real_finding_count, 0);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fixture_in_test_path_combines_to_test_path_and_value() {
+        let dir = unique_tempdir("both");
+        mk(
+            &dir,
+            "tests/no_secret_leak.rs",
+            "const FAKE_VALUE: &str = \"sk-test-FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0\";",
+        );
+        let report = run(&dir);
+        let det = report
+            .detections
+            .iter()
+            .find(|d| d.secret_type == "openai_api_key")
+            .expect("detector should fire");
+        assert!(matches!(
+            det.classification,
+            Classification::TestPathAndValue
+        ));
+        // The recommendation for the strongest fixture classification should
+        // be the "no action needed" message — not the rotation hint.
+        assert!(
+            det.recommended_action
+                .to_lowercase()
+                .contains("no action needed"),
+            "test-path-and-value finding should not say 'rotate immediately': {:?}",
+            det.recommended_action
+        );
+        assert_eq!(report.real_finding_count, 0);
+        assert_eq!(report.fixture_finding_count, 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── Regression: holster's own test fixtures should classify cleanly ────
+
+    #[test]
+    fn holster_canonical_fixture_paths_classify_as_fixtures() {
+        // Mirrors the structure that Tier-0 self-test surfaced: deliberate
+        // `sk-test-fake-...` constants in `tests/no_secret_leak.rs` and
+        // `examples/fake_sidecar_rollback.rs`. After this patch they should
+        // never count toward the verdict.
+        let dir = unique_tempdir("holster-fixture-regression");
+        mk(
+            &dir,
+            "crates/holster-vault/tests/no_secret_leak.rs",
+            "const FAKE_CHILD_WRAPPER_VALUE: &str = \"sk-test-fake-child-wrapper-2026\";\n\
+             const FAKE_ALIZA_VALUE: &str = \"sk-test-fake-aliza-2026-05-05\";\n",
+        );
+        mk(
+            &dir,
+            "crates/holster-vault/examples/fake_sidecar_rollback.rs",
+            "const FAKE_SIDECAR_VALUE: &str = \"sk-test-fake-sidecar-rollback-2026\";\n",
+        );
+
+        // Note: the OpenAI detector requires sk- + 30+ chars, so the short
+        // fake-values above won't all fire. Add at least one that does.
+        mk(
+            &dir,
+            "crates/holster-vault/src/vault.rs",
+            "// inline test fixture used in #[cfg(test)] module\n\
+             const FAKE_AGENT_RUNTIME: &str = \"sk-test-fake-agent-runtime-000000000000000000000000000000\";\n",
+        );
+
+        let report = run(&dir);
+        // Every detection that DOES fire must be classified as a fixture
+        // — none should be Real, none should drive the verdict.
+        for d in &report.detections {
+            assert!(
+                d.classification.is_fixture(),
+                "holster fixture path/value should classify as fixture, got Real: {d:?}"
+            );
+        }
+        assert_eq!(
+            report.real_finding_count, 0,
+            "no real findings should remain after fixture classification"
+        );
+        // Excluding-fixtures summary must be empty for all severities.
+        let total: usize = report.summary_by_risk_excluding_fixtures.values().sum();
+        assert_eq!(
+            total, 0,
+            "summary_by_risk_excluding_fixtures must be empty for a fixtures-only repo"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 }
