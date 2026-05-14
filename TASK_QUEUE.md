@@ -420,8 +420,13 @@ query family. Drafts staged on `nauta-control:~/.openclaw/workspace/nautaai-webs
       markup (`SoftwareApplication`/`Article`/`FAQPage`/`BreadcrumbList`),
       DESIGN.md-consistent Tailwind, internal cross-links.
 
-- [ ] T6.1 — Go-live: invoke `staging-holster-2026-05-14/deploy.sh` after Dave's
-      approval. Atomic copy + auto-backup; reversible.
+- [x] T6.1 — Go-live (2026-05-14): invoked `staging-holster-2026-05-14/deploy.sh`
+      with Dave's approval. Atomic copy + backup at
+      `staging-holster-2026-05-14/backups-20260514T152638Z/`. Rebuilt
+      production bundle (`npm run build`) — 2 new static prerenders.
+      LaunchAgent kickstart confirmed; all 4 holster routes serve 200:
+      `/holster`, `/holster/is-this-mcp-server-safe-to-run`,
+      `/holster/safe-to-run-vs-safe-to-share`, `/holster/doctor`.
 
 - [ ] T6.2 — Sitemap.xml + nautaai.com nav links for the 3 new routes (after
       T6.1 ships).
@@ -432,9 +437,19 @@ query family. Drafts staged on `nauta-control:~/.openclaw/workspace/nautaai-webs
 
 ## Up next
 
-- **M2 / M3.1 / M4 manual click acceptance by Dave** (`pnpm exec tauri dev`
-  from `apps/desktop/`). Click-test script at
-  `docs/click-test/m2-m4-acceptance-2026-05-14.md`.
+- ~~**M2 / M3.1 / M4 manual click acceptance by Dave**~~ ✓ ACCEPTED 2026-05-14
+  via the `docs/click-test/m2-m4-acceptance-2026-05-14.md` walkthrough.
+  M2 (vault unlock + key add/copy/delete), M3.1 (repo scan + fixture
+  classification + .env.example + .gitignore + agent profile), M4
+  (TOTP add + generate + privacy + no-Telegram-delivery) all PASS.
+  Side effects of the click-test:
+  - bug fix: `~/` path expansion at every IPC path boundary (commit
+    bd3eb90) — Doctor scan was rejecting `~/holster` shorthand.
+  - UX fix: scan-row red-bar collision with `button.danger` style
+    (commit e5990e6) — fully-painted rose-orange row was unintended.
+  - IA refactor: Doctor view became scan-only, Project Tools moved
+    to its own sidebar entry (commit 11c67bb), Vault inline section
+    removed, duplicate Scan button removed, Auth tile removed.
 - **T5.1 — V0.5 MCP preflight wire-up** (queued — CC building in temp-autonomy window 2026-05-14).
 - **AEO content cascade** — 8 Codex AEO briefs at `~/holster/2026-05-{07..13}-*.md`
   ready to render as `/holster/...` landing pages on nautaai.com.
