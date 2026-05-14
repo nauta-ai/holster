@@ -35,6 +35,7 @@ pub mod agent_profiles;
 pub mod env_example;
 // M4: local-first TOTP authenticator entries, stored in the encrypted vault.
 pub mod auth;
+pub mod mcp_preflight;
 
 use chrono::{DateTime, Utc};
 use secrecy::ExposeSecret;
