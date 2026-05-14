@@ -9,6 +9,7 @@
   import EnvExampleDialog from './EnvExampleDialog.svelte';
   import AuthDialog from './AuthDialog.svelte';
   import McpPreflightDialog from './McpPreflightDialog.svelte';
+  import SecureKeysDialog from './SecureKeysDialog.svelte';
 
   interface Props {
     onLocked: () => void;
@@ -28,6 +29,7 @@
   let showEnvExample = $state(false);
   let showAuth = $state(false);
   let showMcp = $state(false);
+  let showSecureKeys = $state(false);
   let confirmTarget = $state<KeyMetadataDto | null>(null);
   let initialDoctorPath = $state('');
 
@@ -156,6 +158,10 @@
         <span class="module-dot"></span>
         <span>Doctor</span>
       </div>
+      <button class="module-item nav-button" onclick={() => (showSecureKeys = true)}>
+        <span class="module-dot"></span>
+        <span>Secure API Keys</span>
+      </button>
       <button class="module-item nav-button" onclick={() => (showAuth = true)}>
         <span class="module-dot"></span>
         <span>Auth</span>
@@ -351,6 +357,17 @@
 
 {#if showMcp}
   <McpPreflightDialog onClose={() => (showMcp = false)} />
+{/if}
+
+{#if showSecureKeys}
+  <SecureKeysDialog
+    onClose={() => {
+      showSecureKeys = false;
+      refresh();
+    }}
+    onSessionExpired={onSessionExpired}
+    onToast={(message) => showToast(message)}
+  />
 {/if}
 
 {#if confirmTarget}
