@@ -55,6 +55,40 @@ pub enum RiskLevel {
     Low,      // mostly read-only or short-lived
 }
 
+/// Whether a detection looks like a real leak or a known test/fixture pattern.
+///
+/// The detector itself is intentionally context-blind — it fires on any
+/// match of the regex registry. Classification is a separate post-detection
+/// pass that identifies findings inside test paths or with known fake-key
+/// patterns (e.g., `sk-test-`, `FAKE`, long runs of zeros). Frontend uses
+/// this to keep test fixtures out of the verdict and into a separate
+/// "Test fixtures (informational)" panel.
+///
+/// `Real` is the default — only a positive signal (path or value pattern)
+/// promotes a detection to a fixture classification.
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Classification {
+    /// No fixture signal — treat as a real finding at the detector's risk level.
+    Real,
+    /// Path strongly suggests test code (e.g. `tests/`, `*_test.rs`).
+    /// Value did not match a known fixture pattern.
+    TestPath,
+    /// Value matches a known fixture pattern (`sk-test-`, `FAKE`, etc.) but
+    /// path is real source. Could still be a real leak — caller should verify.
+    TestValue,
+    /// Both: test path AND fixture-shaped value. Highest-confidence fixture.
+    TestPathAndValue,
+}
+
+impl Classification {
+    /// True if this finding should be excluded from the verdict + headline
+    /// counts and rendered in the "Test fixtures (informational)" panel.
+    pub fn is_fixture(self) -> bool {
+        !matches!(self, Classification::Real)
+    }
+}
+
 /// One detector — what to look for, what it is, what to do about it.
 ///
 /// `patterns` is a Vec because some providers ship multiple prefix variants
@@ -86,9 +120,13 @@ pub struct Detection {
     pub risk_level: RiskLevel,
     pub tier: Tier,
     pub git_tracked: Option<bool>, // None until M3 repo scanner wraps this
-    pub recommended_action: &'static str, // Detector.remediation_hint
+    pub recommended_action: String, // Detector.remediation_hint, varied by classification
     pub rotation_url: Option<&'static str>,
     pub docs_url: Option<&'static str>,
+    /// Whether this finding looks like a real leak vs a test/fixture.
+    /// Defaults to `Real` from `scan_text`; the M3 repo scanner upgrades
+    /// to `TestPath` / `TestPathAndValue` after path inspection.
+    pub classification: Classification,
 }
 
 // ── Redaction ────────────────────────────────────────────────────────────────
@@ -112,6 +150,14 @@ pub fn redact_match(raw: &str) -> String {
 pub fn detector_registry() -> &'static [Detector] {
     static REGISTRY: OnceLock<Vec<Detector>> = OnceLock::new();
     REGISTRY.get_or_init(build_registry)
+}
+
+/// Look up a detector by its stable `id` field. Used by the M3 repo scanner
+/// to rebuild a recommendation string after path-based reclassification
+/// (when `Real → TestPath` or `TestValue → TestPathAndValue`) without having
+/// to carry the static `remediation_hint` on every `Detection`.
+pub fn detector_for_id(id: &str) -> Option<&'static Detector> {
+    detector_registry().iter().find(|d| d.id == id)
 }
 
 fn rx(pat: &str) -> Regex {
@@ -497,6 +543,85 @@ fn build_registry() -> Vec<Detector> {
     ]
 }
 
+// ── Classification helpers ───────────────────────────────────────────────────
+
+/// True if `raw` matches a known test/fixture/placeholder pattern.
+///
+/// Conservative — designed to catch the canonical fake-key conventions that
+/// builders use deliberately in test fixtures and example code:
+///   - Provider-specific test prefixes (`sk-test-`, `sk-ant-test-`, `pk-test-`).
+///   - Substrings that scream "this is not a real secret" (`fake`, `dummy`,
+///     `example`, `placeholder`, `changeme`, `redacted`, `xxxxxxxx`).
+///   - Long runs of repeated digits (`0000000`, `1111111`) which never
+///     occur in real high-entropy keys.
+///
+/// Case-insensitive on the substring match. Does NOT consult path, file
+/// type, or surrounding code — that's a separate classifier in
+/// `repo_scanner::is_test_path`.
+pub fn looks_like_test_fixture(raw: &str) -> bool {
+    let lc = raw.to_ascii_lowercase();
+
+    // Provider-specific test/fake prefixes.
+    if lc.starts_with("sk-test-")
+        || lc.starts_with("sk-ant-test-")
+        || lc.starts_with("sk-proj-test-")
+        || lc.starts_with("sk-svcacct-test-")
+        || lc.starts_with("pk-test-")
+        || lc.starts_with("rk_test_")
+        || lc.starts_with("sk_test_")
+    {
+        return true;
+    }
+
+    // Substring markers that builders use to label fixture data.
+    const FIXTURE_SUBSTRINGS: &[&str] = &[
+        "fake",
+        "dummy",
+        "example",
+        "placeholder",
+        "changeme",
+        "redacted",
+    ];
+    for marker in FIXTURE_SUBSTRINGS {
+        if lc.contains(marker) {
+            return true;
+        }
+    }
+
+    // Long repeated runs that don't occur in real keys.
+    const REPEAT_RUNS: &[&str] = &["0000000", "1111111", "xxxxxxx"];
+    for run in REPEAT_RUNS {
+        if lc.contains(run) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Build the recommendation text for a detection given its classification.
+///
+/// The wedge claim: report-first, fix-order, not warning dump. That fails if
+/// every detection — real or fixture — gets the same "rotate immediately"
+/// recommendation. This function produces a recommendation that reflects
+/// what the user should actually do.
+pub fn recommendation_for(detector: &Detector, classification: Classification) -> String {
+    match classification {
+        Classification::Real => detector.remediation_hint.to_string(),
+        Classification::TestPath => format!(
+            "Found in a test path. Verify this is fixture data; if it is real, then: {}",
+            detector.remediation_hint
+        ),
+        Classification::TestValue => format!(
+            "Looks like a test placeholder pattern. Verify; if it is real, then: {}",
+            detector.remediation_hint
+        ),
+        Classification::TestPathAndValue => {
+            "Test fixture in a test path — confirm intentional. No action needed unless this turns out to be a real key.".to_string()
+        }
+    }
+}
+
 // ── Scanner ──────────────────────────────────────────────────────────────────
 
 /// Run every detector against a string. Returns a Vec of Detections, with
@@ -504,6 +629,11 @@ fn build_registry() -> Vec<Detector> {
 ///
 /// Line numbers are 1-based. `file_path` is None — the caller (M3 repo
 /// scanner) sets it after wrapping this function with file I/O.
+///
+/// Classification: `scan_text` only sees the raw value, not the path, so
+/// it sets `Classification::TestValue` if `looks_like_test_fixture` matches,
+/// else `Classification::Real`. The M3 repo scanner upgrades `Real` →
+/// `TestPath` and `TestValue` → `TestPathAndValue` once the file path is known.
 pub fn scan_text(s: &str) -> Vec<Detection> {
     let registry = detector_registry();
     let mut out = Vec::new();
@@ -529,6 +659,11 @@ pub fn scan_text(s: &str) -> Vec<Detection> {
             for m in pat.find_iter(s) {
                 let raw = m.as_str();
                 let preview = redact_match(raw);
+                let classification = if looks_like_test_fixture(raw) {
+                    Classification::TestValue
+                } else {
+                    Classification::Real
+                };
                 out.push(Detection {
                     secret_type: det.id,
                     provider: det.provider,
@@ -539,9 +674,10 @@ pub fn scan_text(s: &str) -> Vec<Detection> {
                     risk_level: det.risk_level,
                     tier: det.tier,
                     git_tracked: None,
-                    recommended_action: det.remediation_hint,
+                    recommended_action: recommendation_for(det, classification),
                     rotation_url: det.rotation_url,
                     docs_url: det.docs_url,
+                    classification,
                 });
             }
         }
@@ -880,5 +1016,98 @@ mod tests {
         let json = serde_json::to_string(&dets).unwrap();
         assert!(!json.contains("sk-FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0123"));
         assert!(json.contains("redacted_preview"));
+        assert!(json.contains("classification"));
+    }
+
+    // ── Classification: value-pattern detection ─────────────────────────────
+
+    #[test]
+    fn looks_like_test_fixture_recognizes_sk_test_prefix() {
+        assert!(looks_like_test_fixture(
+            "sk-test-something-something-1234567890"
+        ));
+        assert!(looks_like_test_fixture("sk-ant-test-fake-keymaterial-2026"));
+        assert!(looks_like_test_fixture("sk-proj-test-foo-bar-baz"));
+        assert!(looks_like_test_fixture("pk-test-stripe-key"));
+        assert!(looks_like_test_fixture("sk_test_abcdef"));
+    }
+
+    #[test]
+    fn looks_like_test_fixture_recognizes_substring_markers() {
+        assert!(looks_like_test_fixture("sk-FAKEFAKEFAKEFAKEFAKE"));
+        assert!(looks_like_test_fixture("sk-something-dummy-key"));
+        assert!(looks_like_test_fixture("sk-EXAMPLE-key-here"));
+        assert!(looks_like_test_fixture("CHANGEME-token-here"));
+        assert!(looks_like_test_fixture("placeholder-secret"));
+        assert!(looks_like_test_fixture("REDACTED-token"));
+    }
+
+    #[test]
+    fn looks_like_test_fixture_recognizes_repeat_runs() {
+        assert!(looks_like_test_fixture("sk-aaaa00000000000bbbbb"));
+        assert!(looks_like_test_fixture("sk-aaaa11111111111bbbbb"));
+        assert!(looks_like_test_fixture("AKIAxxxxxxxFOOFOO"));
+    }
+
+    #[test]
+    fn looks_like_test_fixture_negative_on_realistic_keys() {
+        // High-entropy, no markers, no long runs — should NOT classify as fixture.
+        // String literals are split via `concat!()` so the source text of THIS
+        // file does not itself look like a contiguous credential to the
+        // repo scanner that scans Holster's own source. Runtime values are
+        // identical to the unsplit form.
+        assert!(!looks_like_test_fixture(concat!(
+            "sk-",
+            "proj-Z4qKjT8mN9aB3cD2eF1gH0iJ7kL6mN5pQ4rS3tU2vW1xY0zA9bC8d"
+        )));
+        assert!(!looks_like_test_fixture(concat!(
+            "sk-",
+            "ant-api03-Z4qKjT8mN9aB3cD2eF1gH0iJ7kL6mN5pQ4rS3tU2vW1xY0zA9b"
+        )));
+        assert!(!looks_like_test_fixture(concat!(
+            "ghp",
+            "_Z4qKjT8mN9aB3cD2eF1gH0iJ7kL6mN5pQ4rS"
+        )));
+        assert!(!looks_like_test_fixture(concat!(
+            "AIza",
+            "SyZ4qKjT8mN9aB3cD2eF1gH0iJ7kL6mN5pQ"
+        )));
+    }
+
+    #[test]
+    fn scan_text_classifies_real_vs_test_value() {
+        // String literals split via concat! so this source file doesn't
+        // self-trip the repo scanner — runtime values are identical.
+        let real = concat!(
+            "OPENAI_API_KEY=sk-",
+            "proj-Z4qKjT8mN9aB3cD2eF1gH0iJ7kL6mN5pQ4rS3tU2vW1xY"
+        );
+        let det = scan_text(real)
+            .into_iter()
+            .find(|d| d.secret_type == "openai_api_key")
+            .expect("detector fires on realistic value");
+        assert!(matches!(det.classification, Classification::Real));
+        // The recommendation should be the unmodified detector hint.
+        assert!(det
+            .recommended_action
+            .contains("Rotate immediately at platform.openai.com"));
+
+        let fake = concat!(
+            "OPENAI_API_KEY=sk-",
+            "test-FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0"
+        );
+        let det = scan_text(fake)
+            .into_iter()
+            .find(|d| d.secret_type == "openai_api_key")
+            .expect("detector fires on test value too");
+        assert!(matches!(det.classification, Classification::TestValue));
+        // Recommendation should be the wrapped hint, NOT the bare hint.
+        assert!(
+            det.recommended_action
+                .to_lowercase()
+                .contains("test placeholder pattern"),
+            "test-value recommendation should call out the placeholder pattern: {:?}",
+            det.recommended_action
+        );
     }
 }
