@@ -21,16 +21,32 @@ logs/
 # Local/generated agent outputs. Archive useful outputs in the vault instead
 # of committing them to the product repo.
 .codex-artifacts/
+.codex-links/
 .codex-staging/
 automation-artifacts/
 automation-output/
 automation-outputs/
 automation-staging/
 automation_artifacts/
+automation_outputs/
 customer-acquisition-artifacts/
+customer-acquisition-execution-sweep-artifacts/
 customer-acquisition-execution-sweep-outputs/
 marketing-artifacts/
+marketing-artifacts-staging/
 marketing-backlog-staging/
+marketing-staging/
+marketing_artifacts/
+notes/
+overnight-research/
 overnight_research_outbox/
+staging-marketing/
 tmp/
+tmp-marketing-artifacts/
+visual-handoff/
 20*-holster-*.md
+marketing-artifact-test.txt
+
+# Backup files created before destructive edits — keep local, don't commit.
+*.bak
+*.bak-pre-*
