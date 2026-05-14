@@ -420,10 +420,11 @@
   .dialog-header h2 {
     margin: 4px 0 6px;
     font-size: 22px;
+    color: #ffffff;
   }
 
   .dialog-subtitle {
-    color: var(--text-muted, #6c6c78);
+    color: rgba(255, 255, 255, 0.7);
     line-height: 1.5;
     margin: 0;
     max-width: 60ch;
@@ -434,23 +435,23 @@
     border: none;
     font-size: 24px;
     line-height: 1;
-    color: var(--text-muted, #6c6c78);
+    color: rgba(255, 255, 255, 0.55);
     cursor: pointer;
     padding: 4px 10px;
     border-radius: 6px;
-    transition: background 120ms ease;
+    transition: background 120ms ease, color 120ms ease;
   }
 
   .dialog-close:hover {
-    background: var(--surface-muted, #ece7dc);
-    color: var(--text, #1a1a1f);
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
   }
 
   .preflight-tabs {
     display: flex;
     gap: var(--spacing-sm, 8px);
     margin: var(--spacing-md, 12px) 0 var(--spacing-lg, 16px);
-    border-bottom: 1px solid var(--border, #d8d3c4);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
 
   .preflight-tab {
@@ -458,18 +459,18 @@
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
-    color: var(--text-muted, #6c6c78);
+    color: rgba(255, 255, 255, 0.55);
     cursor: pointer;
     font-weight: 600;
     transition: color 120ms ease, border-color 120ms ease;
   }
 
   .preflight-tab:hover {
-    color: var(--text, #1a1a1f);
+    color: #ffffff;
   }
 
   .preflight-tab.is-active {
-    color: var(--text, #1a1a1f);
+    color: #ffffff;
     border-bottom-color: var(--accent, #b8781f);
   }
 
@@ -480,7 +481,7 @@
   }
 
   .preflight-explain {
-    color: var(--text-muted, #6c6c78);
+    color: rgba(255, 255, 255, 0.7);
     line-height: 1.5;
   }
 
@@ -512,7 +513,7 @@
     flex-direction: column;
     gap: var(--spacing-md, 12px);
     padding-top: var(--spacing-sm, 8px);
-    border-top: 1px solid var(--border, #d8d3c4);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
   }
 
   .preflight-verdicts {
@@ -527,7 +528,7 @@
   }
 
   .preflight-batch-count {
-    color: var(--text-muted, #6c6c78);
+    color: rgba(255, 255, 255, 0.6);
     font-size: 12px;
     margin-left: auto;
   }
@@ -538,8 +539,9 @@
     gap: 2px;
     padding: 8px 14px;
     border-radius: 10px;
-    border: 1px solid var(--border, #d8d3c4);
-    background: var(--surface, #ffffff);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.04);
+    color: #ffffff;
     font-weight: 600;
   }
 
@@ -554,7 +556,7 @@
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--text-muted, #6c6c78);
+    color: rgba(255, 255, 255, 0.6);
   }
 
   .verdict-pill .verdict-value {
@@ -566,28 +568,29 @@
   }
 
   .verdict-safe {
-    border-color: rgba(47, 122, 74, 0.4);
-    background: rgba(47, 122, 74, 0.08);
-    color: #205a36;
+    border-color: rgba(95, 200, 130, 0.45);
+    background: rgba(47, 122, 74, 0.18);
+    color: #8ee0ad;
   }
 
   .verdict-caution {
-    border-color: rgba(184, 120, 31, 0.4);
-    background: rgba(184, 120, 31, 0.08);
-    color: #8a5b18;
+    border-color: rgba(245, 180, 90, 0.45);
+    background: rgba(184, 120, 31, 0.18);
+    color: #f3c172;
   }
 
   .verdict-risky {
-    border-color: rgba(176, 74, 48, 0.5);
-    background: rgba(176, 74, 48, 0.08);
-    color: #8c3b27;
+    border-color: rgba(240, 130, 110, 0.5);
+    background: rgba(176, 74, 48, 0.22);
+    color: #f3a18d;
   }
 
   .preflight-summary code,
   .preflight-path code,
   .batch-row-cmd code {
     display: block;
-    background: var(--surface-muted, #ece7dc);
+    background: rgba(255, 255, 255, 0.06);
+    color: #e8edf6;
     padding: 8px 10px;
     border-radius: 6px;
     font-family: ui-monospace, SFMono-Regular, monospace;
@@ -596,7 +599,7 @@
   }
 
   .preflight-clean {
-    color: #205a36;
+    color: #8ee0ad;
     font-weight: 500;
   }
 
@@ -616,8 +619,9 @@
   .preflight-finding {
     padding: 10px 12px;
     border-radius: 8px;
-    border: 1px solid var(--border, #d8d3c4);
-    background: var(--surface, #ffffff);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    color: #e8edf6;
   }
 
   .preflight-finding.sev-risk {
@@ -651,18 +655,18 @@
   }
 
   .finding-icon.sev-risk {
-    background: rgba(176, 74, 48, 0.18);
-    color: #8c3b27;
+    background: rgba(240, 130, 110, 0.22);
+    color: #f3a18d;
   }
 
   .finding-icon.sev-caution {
-    background: rgba(184, 120, 31, 0.18);
-    color: #8a5b18;
+    background: rgba(245, 180, 90, 0.22);
+    color: #f3c172;
   }
 
   .finding-icon.sev-info {
-    background: rgba(108, 108, 120, 0.16);
-    color: #4a4a55;
+    background: rgba(255, 255, 255, 0.12);
+    color: #cfd6e3;
   }
 
   .finding-body {
@@ -682,7 +686,8 @@
   .finding-check {
     font-family: ui-monospace, SFMono-Regular, monospace;
     font-size: 12px;
-    background: var(--surface-muted, #ece7dc);
+    background: rgba(255, 255, 255, 0.08);
+    color: #e8edf6;
     padding: 2px 6px;
     border-radius: 4px;
   }
@@ -691,11 +696,11 @@
     font-size: 10px;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--text-muted, #6c6c78);
+    color: rgba(255, 255, 255, 0.5);
   }
 
   .finding-hint {
-    color: var(--text-muted, #6c6c78);
+    color: rgba(255, 255, 255, 0.7);
     font-size: 13px;
   }
 
@@ -710,9 +715,10 @@
 
   .preflight-batch-row {
     padding: 14px;
-    border: 1px solid var(--border, #d8d3c4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
-    background: var(--surface, #ffffff);
+    background: rgba(255, 255, 255, 0.04);
+    color: #e8edf6;
   }
 
   .batch-row-header {
