@@ -659,7 +659,7 @@ fn export_runtime_profile(
     if args.key_ids.is_empty() {
         return Err("select at least one key to export".into());
     }
-    let target_dir = PathBuf::from(args.target_dir.trim());
+    let target_dir = expand_home_path(args.target_dir.trim());
     if !target_dir.exists() || !target_dir.is_dir() {
         return Err("target folder does not exist".into());
     }
@@ -1302,6 +1302,23 @@ fn analyze_claude_desktop_config_cmd(
 fn default_claude_desktop_config_path() -> Result<PathBuf, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME env var not set".to_string())?;
     Ok(PathBuf::from(home).join("Library/Application Support/Claude/claude_desktop_config.json"))
+}
+
+/// Expand `~/...` shorthand to `$HOME/...`. Leaves other paths untouched.
+/// Used at every IPC boundary that accepts a user-supplied filesystem path.
+fn expand_home_path(input: &str) -> PathBuf {
+    if input == "~" {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home);
+        }
+        return PathBuf::from(input);
+    }
+    if let Some(rest) = input.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home).join(rest);
+        }
+    }
+    PathBuf::from(input)
 }
 
 fn map_mcp_preflight_error(err: mcp_preflight::McpPreflightError) -> String {

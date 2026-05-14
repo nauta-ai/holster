@@ -29,6 +29,22 @@
 
 use std::path::{Path, PathBuf};
 
+/// Expand `~/...` shorthand to `$HOME/...`. Leaves other paths untouched.
+fn expand_home(input: &str) -> PathBuf {
+    if input == "~" {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home);
+        }
+        return PathBuf::from(input);
+    }
+    if let Some(rest) = input.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home).join(rest);
+        }
+    }
+    PathBuf::from(input)
+}
+
 use serde::{Deserialize, Serialize};
 
 const TEMP_SUFFIX: &str = ".holster-tmp";
@@ -382,7 +398,7 @@ pub fn apply_to_disk(
     args: &EnvExampleApplyArgs,
     audit_writer: &mut dyn FnMut(&serde_json::Value) -> Result<Option<String>, String>,
 ) -> Result<EnvExampleApplyReport, String> {
-    let target_dir = PathBuf::from(args.target_dir.trim());
+    let target_dir = expand_home(args.target_dir.trim());
     if !target_dir.exists() {
         return Err(format!(
             "target folder does not exist: {}",

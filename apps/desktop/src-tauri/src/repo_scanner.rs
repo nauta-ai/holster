@@ -141,10 +141,28 @@ const TEST_PATH_COMPONENTS: &[&str] = &[
 
 // ── Public entry point ──────────────────────────────────────────────────────
 
+/// Expand a leading `~` or `~/` in a user-supplied path to `$HOME`.
+/// Leaves the path unchanged if it doesn't start with `~`. Used to accept
+/// shorthand paths from the frontend without forcing absolute paths.
+fn expand_user_path(input: &str) -> PathBuf {
+    if input == "~" {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home);
+        }
+        return PathBuf::from(input);
+    }
+    if let Some(rest) = input.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home).join(rest);
+        }
+    }
+    PathBuf::from(input)
+}
+
 pub fn scan_local_path(args: ScanArgs) -> Result<ScanReport, String> {
     let started = Instant::now();
 
-    let root = PathBuf::from(args.path.trim());
+    let root = expand_user_path(args.path.trim());
     if root.as_os_str().is_empty() {
         return Err("path is empty".into());
     }

@@ -219,12 +219,28 @@ pub fn apply(args: GitignoreApplyArgs) -> Result<GitignoreApplyReport, String> {
 
 // ── Path safety ─────────────────────────────────────────────────────────────
 
+/// Expand `~/...` shorthand to `$HOME/...`. Leaves other paths untouched.
+fn expand_home(input: &str) -> PathBuf {
+    if input == "~" {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home);
+        }
+        return PathBuf::from(input);
+    }
+    if let Some(rest) = input.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home).join(rest);
+        }
+    }
+    PathBuf::from(input)
+}
+
 fn resolve_safe_root(raw: &str) -> Result<PathBuf, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err("path is empty".into());
     }
-    let p = PathBuf::from(trimmed);
+    let p = expand_home(trimmed);
     if !p.exists() {
         return Err(format!("path does not exist: {}", p.display()));
     }
