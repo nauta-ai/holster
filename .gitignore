@@ -39,6 +39,7 @@ marketing-staging/
 marketing_artifacts/
 notes/
 overnight-research/
+overnight-research-staging/
 overnight_research_outbox/
 staging-marketing/
 tmp/
@@ -46,7 +47,11 @@ tmp-marketing-artifacts/
 visual-handoff/
 20*-holster-*.md
 marketing-artifact-test.txt
+.env.holster-backup-*
 
 # Backup files created before destructive edits — keep local, don't commit.
 *.bak
 *.bak-pre-*
+# Holster runtime secrets
+*.env
+*.holster-tmp
