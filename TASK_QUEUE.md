@@ -397,10 +397,38 @@ is PowerShell dump only.
       desktop-package clippy clean. Spec at
       `obsidian-vault/Nauta-AI/Projects/Holster/2026-05-14-mcp-preflight-v0-spec.md`.
 
-- [ ] T5.1 — V0.5 wire-up: Tauri `#[tauri::command]` wrapper for the analyzer
-      + `McpPreflightDialog.svelte` (paste JSON area → verdict pills → findings
-      list with fix-hint accordion) + BuildBelt wizard "Check your MCP servers"
-      step that auto-scans `~/Library/Application Support/Claude/claude_desktop_config.json`.
+- [x] T5.1 — V0.5 wire-up (2026-05-14): Tauri `analyze_mcp_config_cmd` +
+      `analyze_claude_desktop_config_cmd` IPC commands, `McpPreflightDialog.svelte`
+      two-tab dialog (paste-config + scan-Claude-Desktop), Main.svelte side-rail
+      entry. 6 new IPC tests added; total 199 + 63 + 3 = 265 tests passing.
+      `pnpm tauri build` clean. Awaiting Dave's click-test on the dialog.
+- [ ] T5.2 — BuildBelt setup wizard "Check your MCP servers" step that
+      auto-scans on first-run and surfaces a verdict table. (Scoped out of
+      T5.1 because the dialog is reachable from the main sidebar so MCP
+      preflight isn't blocked. Wizard integration is a UX nicety.)
+
+## M6 — Holster AEO content cascade (2026-05-14)
+
+First wave of AI-search landing pages for the `is this MCP server safe to run`
+query family. Drafts staged on `nauta-control:~/.openclaw/workspace/nautaai-website/staging-holster-2026-05-14/`.
+
+- [x] T6.0 — Three pages drafted from Codex AEO briefs:
+      - `/holster/page.tsx` — V6 framing refresh (overwrites existing)
+      - `/holster/is-this-mcp-server-safe-to-run/page.tsx` — exact-query wedge
+      - `/holster/safe-to-run-vs-safe-to-share/page.tsx` — distinction page
+      Each has `Metadata` (title/description/canonical/OG), JSON-LD schema
+      markup (`SoftwareApplication`/`Article`/`FAQPage`/`BreadcrumbList`),
+      DESIGN.md-consistent Tailwind, internal cross-links.
+
+- [ ] T6.1 — Go-live: invoke `staging-holster-2026-05-14/deploy.sh` after Dave's
+      approval. Atomic copy + auto-backup; reversible.
+
+- [ ] T6.2 — Sitemap.xml + nautaai.com nav links for the 3 new routes (after
+      T6.1 ships).
+
+- [ ] T6.3 — Second wave: render remaining 6 Codex AEO briefs at
+      `~/holster/2026-05-*.md` into landing pages (config-inheritance,
+      founder-bridge, docker-compose-override variants, agent-ops checklist).
 
 ## Up next
 
