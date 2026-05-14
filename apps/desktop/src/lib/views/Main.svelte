@@ -1,8 +1,7 @@
 <script lang="ts">
-  import { listKeys, lockVault, copyToClipboard, type KeyMetadataDto } from '$lib/api';
+  import { listKeys, lockVault, type KeyMetadataDto } from '$lib/api';
   import { loadScanHistory, type ScanHistoryEntry } from '$lib/scanHistory';
   import AddKeyDialog from './AddKeyDialog.svelte';
-  import ConfirmDelete from './ConfirmDelete.svelte';
   import ExportRuntimeDialog from './ExportRuntimeDialog.svelte';
   import HolsterDoctorDialog from './HolsterDoctorDialog.svelte';
   import GitignoreHelperDialog from './GitignoreHelperDialog.svelte';
@@ -10,6 +9,7 @@
   import AuthDialog from './AuthDialog.svelte';
   import McpPreflightDialog from './McpPreflightDialog.svelte';
   import SecureKeysDialog from './SecureKeysDialog.svelte';
+  import ProjectToolsDialog from './ProjectToolsDialog.svelte';
 
   interface Props {
     onLocked: () => void;
@@ -30,7 +30,7 @@
   let showAuth = $state(false);
   let showMcp = $state(false);
   let showSecureKeys = $state(false);
-  let confirmTarget = $state<KeyMetadataDto | null>(null);
+  let showProjectTools = $state(false);
   let initialDoctorPath = $state('');
 
   async function refresh() {
@@ -54,20 +54,6 @@
     scanHistory = loadScanHistory();
   }
 
-  async function onCopy(k: KeyMetadataDto) {
-    try {
-      const secs = await copyToClipboard(k.id);
-      showToast(`Copied — clipboard auto-clears in ${secs}s`);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.toLowerCase().includes('session expired') || msg.toLowerCase().includes('session is invalid')) {
-        onSessionExpired();
-        return;
-      }
-      error = msg;
-    }
-  }
-
   async function onLock() {
     try {
       await lockVault();
@@ -86,15 +72,6 @@
   function openDoctor(path = '') {
     initialDoctorPath = path;
     showDoctor = true;
-  }
-
-  function fmtDate(s: string | null): string {
-    if (!s) return '—';
-    try {
-      return new Date(s).toLocaleString();
-    } catch {
-      return s;
-    }
   }
 
   function fmtRelativeTime(timestamp: number): string {
@@ -158,9 +135,13 @@
         <span class="module-dot"></span>
         <span>Doctor</span>
       </div>
+      <button class="module-item nav-button" onclick={() => (showProjectTools = true)}>
+        <span class="module-dot"></span>
+        <span>Project Tools</span>
+      </button>
       <button class="module-item nav-button" onclick={() => (showSecureKeys = true)}>
         <span class="module-dot"></span>
-        <span>Secure API Keys</span>
+        <span>Vault</span>
       </button>
       <button class="module-item nav-button" onclick={() => (showAuth = true)}>
         <span class="module-dot"></span>
@@ -212,7 +193,6 @@
               <h2>Recent scans</h2>
               <p>Click a row to re-scan that path.</p>
             </div>
-            <button class="primary" onclick={() => openDoctor()}>Scan a project</button>
           </div>
           <ul class="scan-list">
             {#each scanHistory.slice(0, 5) as entry (entry.root_path)}
@@ -234,75 +214,6 @@
         </section>
       {/if}
 
-      <section class="tool-grid" aria-label="Tools">
-        <button class="tool-card" onclick={() => (showEnvExample = true)}>
-          <span class="tool-card-title">Generate .env.example</span>
-          <span class="tool-card-sub">Committable template with placeholder values only.</span>
-        </button>
-        <button class="tool-card" onclick={() => (showGitignore = true)}>
-          <span class="tool-card-title">Review .gitignore</span>
-          <span class="tool-card-sub">Audit and atomically append credential-file patterns.</span>
-        </button>
-        <button class="tool-card" onclick={() => (showExport = true)} disabled={keys.length === 0}>
-          <span class="tool-card-title">Export agent profile</span>
-          <span class="tool-card-sub">Runtime profile for Codex, Claude Code, Cursor, or Hermes.</span>
-        </button>
-        <button class="tool-card" onclick={() => (showAuth = true)}>
-          <span class="tool-card-title">Auth · 2FA</span>
-          <span class="tool-card-sub">Store TOTP codes and backup codes in the vault.</span>
-        </button>
-      </section>
-
-      {#if loading && keys.length === 0}
-        <div class="empty">Loading vault…</div>
-      {:else if keys.length === 0}
-        <section class="vault-empty empty">
-          <p class="empty-title">Vault is empty.</p>
-          <p>Add the API keys you use so Holster can generate matching <code>.env.example</code> placeholders and agent runtime profiles. Optional — scans work without it.</p>
-          <div class="empty-actions">
-            <button onclick={() => (showAdd = true)}>Add a key</button>
-          </div>
-        </section>
-      {:else}
-        <section class="table-panel">
-          <div class="section-heading">
-            <div>
-              <h2>Vault</h2>
-              <p>{keys.length} key{keys.length === 1 ? '' : 's'} stored locally. Values never appear in the UI.</p>
-            </div>
-            <button onclick={() => (showAdd = true)}>Add key</button>
-          </div>
-          <table class="keys-table">
-            <thead>
-              <tr>
-                <th>Provider</th>
-                <th>Label</th>
-                <th>Project</th>
-                <th>Created</th>
-                <th>Last used</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each keys as k (k.id)}
-                <tr>
-                  <td><span class="provider-badge">{k.provider}</span></td>
-                  <td class="label-cell">{k.label}</td>
-                  <td>{k.project_tag ?? '—'}</td>
-                  <td class="id-cell">{fmtDate(k.created_at)}</td>
-                  <td class="id-cell">{fmtDate(k.last_used_at)}</td>
-                  <td>
-                    <div class="row-actions">
-                      <button onclick={() => onCopy(k)}>Copy</button>
-                      <button class="danger ghost-danger" onclick={() => (confirmTarget = k)}>Delete</button>
-                    </div>
-                  </td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </section>
-      {/if}
     </main>
   </section>
 </div>
@@ -374,13 +285,21 @@
   />
 {/if}
 
-{#if confirmTarget}
-  <ConfirmDelete
-    target={confirmTarget}
-    onClose={() => (confirmTarget = null)}
-    onDeleted={() => {
-      confirmTarget = null;
-      refresh();
+{#if showProjectTools}
+  <ProjectToolsDialog
+    exportDisabled={keys.length === 0}
+    onClose={() => (showProjectTools = false)}
+    onEnvExample={() => {
+      showProjectTools = false;
+      showEnvExample = true;
+    }}
+    onGitignore={() => {
+      showProjectTools = false;
+      showGitignore = true;
+    }}
+    onExportProfile={() => {
+      showProjectTools = false;
+      showExport = true;
     }}
   />
 {/if}
