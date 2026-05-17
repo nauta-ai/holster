@@ -962,6 +962,18 @@ fn read_runtime_password(
         return Ok(value);
     }
 
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = password_keychain_account;
+        if password_keychain_service.is_some() {
+            anyhow::bail!(
+                "--password-keychain-service is only supported on macOS. \
+                 On Linux, use --password-env <ENV_NAME> or pipe the password via stdin."
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
     if let Some(service) = password_keychain_service {
         let mut cmd = ProcessCommand::new("/usr/bin/security");
         cmd.arg("find-generic-password")
