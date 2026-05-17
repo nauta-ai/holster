@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import sys
+from importlib.metadata import PackageNotFoundError, version
+
 from mcp.server.fastmcp import FastMCP
 
 from holster_mcp.free import check_gitignore, rotation_playbook, scan_repo
@@ -7,6 +10,18 @@ from holster_mcp.paid import audit_log, vault_add, vault_rotate
 from holster_mcp.paid import license as license_gate
 
 mcp = FastMCP("holster")
+
+
+HELP_TEXT = """holster-mcp
+
+Local-first MCP server for Holster secret scanning, rotation guidance, vault writes, and audit logs.
+
+Usage:
+  holster-mcp [--help]
+  holster-mcp [--version]
+
+The server runs over MCP stdio when started without arguments.
+"""
 
 
 @mcp.tool(name="holster.scan_repo")
@@ -93,7 +108,23 @@ def tool_audit_log(
     return result
 
 
-def main() -> None:
+def _package_version() -> str:
+    try:
+        return version("holster-mcp")
+    except PackageNotFoundError:
+        return "0.1.0"
+
+
+def main(argv: list[str] | None = None) -> None:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv in (["--help"], ["-h"]):
+        print(HELP_TEXT)
+        return
+    if argv == ["--version"]:
+        print(f"holster-mcp {_package_version()}")
+        return
+    if argv:
+        raise SystemExit(f"unknown argument: {argv[0]}")
     mcp.run()
 
 
