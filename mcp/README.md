@@ -2,7 +2,15 @@
 
 Holster MCP exposes local Holster Doctor checks to MCP-compatible agents. The server is local-first: free tools shell out to the bundled `holster-doctor` binary and never send repository contents to a network service.
 
+<!-- mcp-name: io.github.nauta-ai/holster-mcp -->
+
 ## Install
+
+From PyPI:
+
+```bash
+pip install holster-mcp
+```
 
 Development install:
 
@@ -29,6 +37,10 @@ MCP client config:
   }
 }
 ```
+
+See the main Holster README for vault and `holster-cli` release binary installation.
+
+License: MIT for the MCP package.
 
 ## Binary Resolution
 
