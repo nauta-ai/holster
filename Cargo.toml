@@ -4,6 +4,7 @@ members = [
     "apps/desktop/src-tauri",
     "apps/cli",
     "crates/holster-vault",
+    "crates/holster-doctor",
 ]
 
 [workspace.package]

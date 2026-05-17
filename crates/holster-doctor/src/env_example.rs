@@ -32,14 +32,14 @@ use std::path::{Path, PathBuf};
 /// Expand `~/...` shorthand to `$HOME/...`. Leaves other paths untouched.
 fn expand_home(input: &str) -> PathBuf {
     if input == "~" {
-        if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home);
+        if let Some(home) = dirs::home_dir() {
+            return home;
         }
         return PathBuf::from(input);
     }
     if let Some(rest) = input.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home).join(rest);
+        if let Some(home) = dirs::home_dir() {
+            return home.join(rest);
         }
     }
     PathBuf::from(input)
@@ -305,12 +305,11 @@ pub fn refuse_dangerous_root(canonical: &Path) -> Result<(), String> {
     if canonical == Path::new("/") {
         return Err("refusing to write into filesystem root '/'".into());
     }
-    if let Ok(home) = std::env::var("HOME") {
-        let home_path = PathBuf::from(&home);
+    if let Some(home_path) = dirs::home_dir() {
         if canonical == home_path.as_path() {
             return Err(format!(
                 "refusing to write into $HOME ({}) directly. Pick a project subdirectory.",
-                home
+                home_path.display()
             ));
         }
     }
@@ -479,7 +478,11 @@ pub fn apply_to_disk(
 // ── Internal helpers ────────────────────────────────────────────────────────
 
 fn write_atomic(target: &Path, body: &str) -> Result<(), String> {
-    let temp_path = PathBuf::from(format!("{}{TEMP_SUFFIX}", target.display()));
+    let filename = target
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "target path has no filename".to_string())?;
+    let temp_path = target.with_file_name(format!("{filename}{TEMP_SUFFIX}"));
     if let Err(e) = std::fs::write(&temp_path, body) {
         let _ = std::fs::remove_file(&temp_path);
         return Err(format!("could not write .env.example temp: {e}"));

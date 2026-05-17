@@ -22,20 +22,17 @@ use std::process::Command;
 use std::sync::Mutex;
 use std::time::Duration;
 
-// Holster Native Detector Pack — see detectors.rs.
-// Pure registry + scanner; no Tauri commands wired in this V0 plan pass.
-pub mod detectors;
-// M3: directory walk + per-file scan, wraps detectors::scan_text.
-pub mod repo_scanner;
-// M3.1 T3.1.2: safe .gitignore audit + atomic append-only apply.
-pub mod gitignore_helper;
-// M3.1 T3.1.3: agent runtime profile catalogue (UX presets only).
-pub mod agent_profiles;
-// M3.1 T3.1.1: .env.example generator (vault and from-file modes).
-pub mod env_example;
+// Holster Doctor logic now lives in the platform-pure workspace crate.
+// Re-export under the historical module names so Tauri IPC command
+// signatures and frontend-visible shapes stay unchanged.
+pub use holster_doctor::agent_profiles;
+pub use holster_doctor::detectors;
+pub use holster_doctor::env_example;
+pub use holster_doctor::gitignore as gitignore_helper;
+pub use holster_doctor::preflight as mcp_preflight;
+pub use holster_doctor::scanner as repo_scanner;
 // M4: local-first TOTP authenticator entries, stored in the encrypted vault.
 pub mod auth;
-pub mod mcp_preflight;
 
 use chrono::{DateTime, Utc};
 use secrecy::ExposeSecret;

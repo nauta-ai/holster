@@ -20,6 +20,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 holster-vault = { path = "../../../crates/holster-vault" }
+holster-doctor = { path = "../../../crates/holster-doctor" }
 tauri = { version = "2", features = [] }
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"
@@ -30,10 +31,6 @@ uuid = { workspace = true }
 secrecy = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
-# Detector pack: compile-time-anchored regex matching for known secret formats.
-regex = "1"
-# Repo scanner (M3): directory walking with .gitignore awareness when opted in.
-ignore = "0.4"
 # Holster Auth (M4): local TOTP generation. The secret remains encrypted in the
 # vault; only the current short code crosses IPC when explicitly requested.
 hmac = "0.12"

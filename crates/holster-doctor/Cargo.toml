@@ -1,0 +1,29 @@
+[package]
+name = "holster-doctor"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Holster Doctor scanner library and CLI"
+
+[lib]
+name = "holster_doctor"
+path = "src/lib.rs"
+
+[[bin]]
+name = "holster-doctor"
+path = "src/bin/holster-doctor.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+clap = { version = "4.5", features = ["derive"] }
+dirs = "6"
+ignore = "0.4"
+regex = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.10"

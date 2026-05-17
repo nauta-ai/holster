@@ -146,14 +146,14 @@ const TEST_PATH_COMPONENTS: &[&str] = &[
 /// shorthand paths from the frontend without forcing absolute paths.
 fn expand_user_path(input: &str) -> PathBuf {
     if input == "~" {
-        if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home);
+        if let Some(home) = dirs::home_dir() {
+            return home;
         }
         return PathBuf::from(input);
     }
     if let Some(rest) = input.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home).join(rest);
+        if let Some(home) = dirs::home_dir() {
+            return home.join(rest);
         }
     }
     PathBuf::from(input)
@@ -352,12 +352,11 @@ fn refuse_dangerous_root(canonical: &Path) -> Result<(), String> {
     if canonical == Path::new("/") {
         return Err("refusing to scan filesystem root '/'".into());
     }
-    if let Ok(home) = std::env::var("HOME") {
-        let home_path = PathBuf::from(&home);
+    if let Some(home_path) = dirs::home_dir() {
         if canonical == home_path.as_path() {
             return Err(format!(
                 "refusing to scan $HOME ({}) directly. Pick a project subdirectory.",
-                home
+                home_path.display()
             ));
         }
     }
@@ -611,10 +610,10 @@ mod tests {
 
     #[test]
     fn refuses_home_directly() {
-        let home = std::env::var("HOME").unwrap_or_default();
-        if home.is_empty() {
+        let Some(home_path) = dirs::home_dir() else {
             return;
-        }
+        };
+        let home = home_path.display().to_string();
         let r = scan_local_path(ScanArgs {
             path: home.clone(),
             follow_symlinks: false,
