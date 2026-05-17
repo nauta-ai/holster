@@ -1,4 +1,4 @@
-//! Metadata-only audit events for agent secret fetch attempts.
+//! Metadata-only audit events.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -18,8 +18,75 @@ pub enum AuditOutcome {
     Denied,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EventKind {
+    Add,
+    Delete,
+    Supersede,
+    Rotate,
+}
+
+impl EventKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Add => "add",
+            Self::Delete => "delete",
+            Self::Supersede => "supersede",
+            Self::Rotate => "rotate",
+        }
+    }
+
+    pub fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "add" => Some(Self::Add),
+            "delete" => Some(Self::Delete),
+            "supersede" => Some(Self::Supersede),
+            "rotate" => Some(Self::Rotate),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AuditEvent {
+    pub ts_utc: String,
+    pub kind: EventKind,
+    pub entry_id: Uuid,
+    pub provider: Option<String>,
+    pub label: Option<String>,
+    pub project: Option<String>,
+    pub superseded_by: Option<Uuid>,
+}
+
+impl AuditEvent {
+    pub fn from_metadata(kind: EventKind, metadata: &KeyMetadata) -> Self {
+        Self {
+            ts_utc: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            kind,
+            entry_id: metadata.id,
+            provider: Some(metadata.provider.as_str().to_string()),
+            label: Some(metadata.label.clone()),
+            project: metadata.project_tag.clone(),
+            superseded_by: metadata.superseded_by,
+        }
+    }
+
+    pub fn supersede(old: &KeyMetadata, new: Uuid) -> Self {
+        Self {
+            ts_utc: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            kind: EventKind::Supersede,
+            entry_id: old.id,
+            provider: Some(old.provider.as_str().to_string()),
+            label: Some(old.label.clone()),
+            project: old.project_tag.clone(),
+            superseded_by: Some(new),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FetchAuditEvent {
     pub ts: DateTime<Utc>,
     pub agent_id: String,
     pub key_id: Uuid,
@@ -30,7 +97,7 @@ pub struct AuditEvent {
     pub reason: Option<String>,
 }
 
-impl AuditEvent {
+impl FetchAuditEvent {
     pub fn fetch(
         agent_id: &str,
         metadata: &KeyMetadata,
@@ -64,7 +131,7 @@ impl AuditLogger {
         &self.path
     }
 
-    pub fn log(&self, event: &AuditEvent) -> Result<(), VaultError> {
+    pub fn log(&self, event: &FetchAuditEvent) -> Result<(), VaultError> {
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;
             set_owner_only_dir(parent);
@@ -118,12 +185,13 @@ mod tests {
             status: KeyStatus::Active,
             notes: None,
             key_format_valid: true,
+            superseded_by: None,
         }
     }
 
     #[test]
     fn audit_event_does_not_include_plaintext() {
-        let event = AuditEvent::fetch("codex", &metadata(), AuditOutcome::Allowed, None);
+        let event = FetchAuditEvent::fetch("codex", &metadata(), AuditOutcome::Allowed, None);
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("fake-openai-smoke"));
         assert!(!json.contains("sk-"));
@@ -135,7 +203,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("audit").join("fetch-events.jsonl");
         let logger = AuditLogger::new(&path);
-        let event = AuditEvent::fetch("codex", &metadata(), AuditOutcome::Denied, Some("test"));
+        let event =
+            FetchAuditEvent::fetch("codex", &metadata(), AuditOutcome::Denied, Some("test"));
         logger.log(&event).unwrap();
         let text = std::fs::read_to_string(path).unwrap();
         assert!(text.contains("\"agent_id\":\"codex\""));

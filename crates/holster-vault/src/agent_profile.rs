@@ -215,6 +215,7 @@ mod tests {
             status: KeyStatus::Active,
             notes: None,
             key_format_valid: true,
+            superseded_by: None,
         }
     }
 

@@ -18,6 +18,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use uuid::Uuid;
 
+use crate::audit::{AuditEvent, EventKind};
 use crate::error::VaultError;
 use crate::models::{KeyMetadata, KeyStatus, Provider};
 
@@ -42,7 +43,8 @@ CREATE TABLE IF NOT EXISTS keys (
     last_rotated_at TEXT,
     last_used_at TEXT,
     notes TEXT,
-    revoked INTEGER NOT NULL DEFAULT 0
+    revoked INTEGER NOT NULL DEFAULT 0,
+    superseded_by TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_keys_provider ON keys(provider);
@@ -70,6 +72,17 @@ CREATE TABLE IF NOT EXISTS leak_scan_history (
     repo_path TEXT NOT NULL,
     matches_found INTEGER NOT NULL,
     matches_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_utc TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    entry_id TEXT NOT NULL,
+    provider TEXT,
+    label TEXT,
+    project TEXT,
+    superseded_by TEXT
 );
 ";
 
@@ -152,6 +165,21 @@ impl Database {
             .lock()
             .map_err(|_| VaultError::Crypto("db mutex poisoned during migration".into()))?;
         conn.execute_batch(INIT_DDL)?;
+        let has_superseded_by = {
+            let mut stmt = conn.prepare("PRAGMA table_info(keys)")?;
+            let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+            let mut found = false;
+            for row in rows {
+                if row? == "superseded_by" {
+                    found = true;
+                    break;
+                }
+            }
+            found
+        };
+        if !has_superseded_by {
+            conn.execute("ALTER TABLE keys ADD COLUMN superseded_by TEXT", [])?;
+        }
         // Bootstrap vault_meta if empty
         let meta_row: Option<i64> = conn
             .query_row("SELECT schema_version FROM vault_meta LIMIT 1", [], |r| {
@@ -235,6 +263,7 @@ impl Database {
             status: KeyStatus::Active,
             notes: p.notes,
             key_format_valid: true,
+            superseded_by: None,
         })
     }
 
@@ -246,7 +275,7 @@ impl Database {
         let row = conn
             .query_row(
                 "SELECT provider, label, project_tag, key_ciphertext, key_nonce,
-                    created_at, expires_at, last_rotated_at, last_used_at, notes, revoked
+                    created_at, expires_at, last_rotated_at, last_used_at, notes, revoked, superseded_by
              FROM keys WHERE id = ?1",
                 params![id.to_string()],
                 |row| {
@@ -261,6 +290,7 @@ impl Database {
                     let last_used_at: Option<String> = row.get(8)?;
                     let notes: Option<String> = row.get(9)?;
                     let revoked: i64 = row.get(10)?;
+                    let superseded_by: Option<String> = row.get(11)?;
                     Ok((
                         provider,
                         label,
@@ -273,6 +303,7 @@ impl Database {
                         last_used_at,
                         notes,
                         revoked,
+                        superseded_by,
                     ))
                 },
             )
@@ -291,6 +322,7 @@ impl Database {
             used_s,
             notes,
             revoked,
+            superseded_by_s,
         ) = row;
 
         let provider = Provider::from_str(&provider_s).ok_or_else(|| {
@@ -321,6 +353,7 @@ impl Database {
             },
             notes,
             key_format_valid: true,
+            superseded_by: superseded_by_s.as_deref().map(parse_uuid).transpose()?,
         };
         Ok(KeyRecord {
             metadata,
@@ -336,7 +369,7 @@ impl Database {
             .map_err(|_| VaultError::Crypto("db mutex poisoned".into()))?;
         let mut stmt = conn.prepare(
             "SELECT id, provider, label, project_tag, created_at, expires_at,
-                    last_rotated_at, last_used_at, notes, revoked
+                    last_rotated_at, last_used_at, notes, revoked, superseded_by
              FROM keys ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -350,6 +383,7 @@ impl Database {
             let used_s: Option<String> = row.get(7)?;
             let notes: Option<String> = row.get(8)?;
             let revoked: i64 = row.get(9)?;
+            let superseded_by: Option<String> = row.get(10)?;
             Ok((
                 id_s,
                 provider_s,
@@ -361,6 +395,7 @@ impl Database {
                 used_s,
                 notes,
                 revoked,
+                superseded_by,
             ))
         })?;
 
@@ -377,6 +412,7 @@ impl Database {
                 used_s,
                 notes,
                 revoked,
+                superseded_by_s,
             ) = r?;
             let id = Uuid::parse_str(&id_s)
                 .map_err(|e| VaultError::Migration(format!("bad UUID in db: {e}")))?;
@@ -398,9 +434,99 @@ impl Database {
                 },
                 notes,
                 key_format_valid: true,
+                superseded_by: superseded_by_s.as_deref().map(parse_uuid).transpose()?,
             });
         }
         Ok(out)
+    }
+
+    pub fn append_audit_event(&self, event: &AuditEvent) -> Result<(), VaultError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| VaultError::Crypto("db mutex poisoned".into()))?;
+        let entry_id = event.entry_id.to_string();
+        let superseded_by = event.superseded_by.map(|id| id.to_string());
+        conn.execute(
+            "INSERT INTO audit_events (
+                ts_utc, kind, entry_id, provider, label, project, superseded_by
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                &event.ts_utc,
+                event.kind.as_str(),
+                entry_id,
+                event.provider.as_deref(),
+                event.label.as_deref(),
+                event.project.as_deref(),
+                superseded_by,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn select_audit_events(&self) -> Result<Vec<AuditEvent>, VaultError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| VaultError::Crypto("db mutex poisoned".into()))?;
+        let mut stmt = conn.prepare(
+            "SELECT ts_utc, kind, entry_id, provider, label, project, superseded_by
+             FROM audit_events ORDER BY id ASC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let ts_utc: String = row.get(0)?;
+            let kind: String = row.get(1)?;
+            let entry_id: String = row.get(2)?;
+            let provider: Option<String> = row.get(3)?;
+            let label: Option<String> = row.get(4)?;
+            let project: Option<String> = row.get(5)?;
+            let superseded_by: Option<String> = row.get(6)?;
+            Ok((
+                ts_utc,
+                kind,
+                entry_id,
+                provider,
+                label,
+                project,
+                superseded_by,
+            ))
+        })?;
+
+        let mut out = Vec::new();
+        for row in rows {
+            let (ts_utc, kind_s, entry_id_s, provider, label, project, superseded_by_s) = row?;
+            let kind = EventKind::from_str(&kind_s)
+                .ok_or_else(|| VaultError::Migration(format!("unknown audit kind: {kind_s}")))?;
+            out.push(AuditEvent {
+                ts_utc,
+                kind,
+                entry_id: parse_uuid(&entry_id_s)?,
+                provider,
+                label,
+                project,
+                superseded_by: superseded_by_s.as_deref().map(parse_uuid).transpose()?,
+            });
+        }
+        Ok(out)
+    }
+
+    pub fn mark_superseded(&self, old: Uuid, new: Uuid) -> Result<(), VaultError> {
+        self.select_key_by_id(old)
+            .map_err(|_| VaultError::EntryNotFound(old))?;
+        self.select_key_by_id(new)
+            .map_err(|_| VaultError::EntryNotFound(new))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| VaultError::Crypto("db mutex poisoned".into()))?;
+        let n = conn.execute(
+            "UPDATE keys SET superseded_by = ?1, last_rotated_at = ?2 WHERE id = ?3",
+            params![new.to_string(), Utc::now().to_rfc3339(), old.to_string()],
+        )?;
+        if n == 0 {
+            return Err(VaultError::EntryNotFound(old));
+        }
+        Ok(())
     }
 
     pub fn update_last_used(&self, id: Uuid, ts: DateTime<Utc>) -> Result<(), VaultError> {
@@ -437,6 +563,10 @@ fn parse_iso(s: &str) -> Result<DateTime<Utc>, VaultError> {
     DateTime::parse_from_rfc3339(s)
         .map(|dt| dt.with_timezone(&Utc))
         .map_err(|e| VaultError::Migration(format!("bad timestamp {s:?}: {e}")))
+}
+
+fn parse_uuid(s: &str) -> Result<Uuid, VaultError> {
+    Uuid::parse_str(s).map_err(|e| VaultError::Migration(format!("bad UUID in db: {e}")))
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────

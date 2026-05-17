@@ -18,7 +18,7 @@ pub mod session;
 pub mod vault;
 
 pub use agent_profile::{AgentProfile, AgentProfileStore, AllowedKeyPattern};
-pub use audit::{AuditEvent, AuditLogger, AuditOutcome};
+pub use audit::{AuditEvent, AuditLogger, AuditOutcome, EventKind, FetchAuditEvent};
 pub use error::VaultError;
 pub use models::{AddKeyInput, KeyMetadata, KeyStatus, Provider};
 pub use session::SessionToken;

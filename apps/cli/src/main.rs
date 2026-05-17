@@ -12,17 +12,19 @@
 //!   holster delete /tmp/test.db <uuid>
 
 use std::collections::BTreeMap;
+use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitCode};
 
 use anyhow::{anyhow, Context, Result};
+use chrono::{DateTime, Duration, Utc};
 use clap::{Parser, Subcommand, ValueEnum};
 use plist::Value;
 use secrecy::ExposeSecret;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use holster_vault::{AddKeyInput, KeyMetadata, KeyStatus, Provider, Vault};
+use holster_vault::{AddKeyInput, AuditEvent, KeyMetadata, KeyStatus, Provider, Vault};
 
 #[derive(Parser)]
 #[command(
@@ -57,6 +59,25 @@ enum Command {
     Get { path: PathBuf, id: Uuid },
     /// Delete a key by id.
     Delete { path: PathBuf, id: Uuid },
+    /// Mark one vault entry as superseded by another.
+    Supersede {
+        path: PathBuf,
+        old_id: Uuid,
+        #[arg(long)]
+        replacement: Uuid,
+    },
+    /// Print mutation audit events from the encrypted vault.
+    AuditLog {
+        path: PathBuf,
+        #[arg(long, default_value_t = 30)]
+        since_days: i64,
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        provider: Option<String>,
+        #[arg(long = "account")]
+        account: Option<String>,
+    },
     /// Import secret-bearing environment variables from a launchd plist.
     ImportPlistEnv {
         path: PathBuf,
@@ -120,6 +141,7 @@ enum Command {
 #[derive(ValueEnum, Clone, Copy)]
 enum ProviderArg {
     Anthropic,
+    Github,
     Openai,
     Google,
     Replicate,
@@ -134,6 +156,7 @@ impl From<ProviderArg> for Provider {
     fn from(p: ProviderArg) -> Self {
         match p {
             ProviderArg::Anthropic => Provider::Anthropic,
+            ProviderArg::Github => Provider::GitHub,
             ProviderArg::Openai => Provider::OpenAI,
             ProviderArg::Google => Provider::Google,
             ProviderArg::Replicate => Provider::Replicate,
@@ -174,6 +197,24 @@ fn run(cli: Cli) -> Result<()> {
         Command::List { path } => cmd_list(&path),
         Command::Get { path, id } => cmd_get(&path, id),
         Command::Delete { path, id } => cmd_delete(&path, id),
+        Command::Supersede {
+            path,
+            old_id,
+            replacement,
+        } => cmd_supersede(&path, old_id, replacement),
+        Command::AuditLog {
+            path,
+            since_days,
+            json,
+            provider,
+            account,
+        } => cmd_audit_log(
+            &path,
+            since_days,
+            json,
+            provider.as_deref(),
+            account.as_deref(),
+        ),
         Command::ImportPlistEnv {
             path,
             source,
@@ -240,8 +281,8 @@ fn run(cli: Cli) -> Result<()> {
 }
 
 fn cmd_create(path: &std::path::Path) -> Result<()> {
-    let pw = rpassword::prompt_password("New master password: ").context("reading password")?;
-    let confirm = rpassword::prompt_password("Confirm: ").context("reading confirmation")?;
+    let pw = prompt_secret("New master password: ").context("reading password")?;
+    let confirm = prompt_secret("Confirm: ").context("reading confirmation")?;
     if pw != confirm {
         return Err(anyhow!("passwords do not match"));
     }
@@ -259,12 +300,12 @@ fn cmd_add(
     notes: Option<String>,
 ) -> Result<()> {
     let vault = Vault::open(path).context("opening vault")?;
-    let pw = rpassword::prompt_password("Master password: ")?;
+    let pw = prompt_secret("Master password: ")?;
     let token = vault
         .unlock(&pw)
         .context("unlock failed (wrong password?)")?;
 
-    let key_value = rpassword::prompt_password("Key value: ").context("reading key value")?;
+    let key_value = prompt_secret("Key value: ").context("reading key value")?;
     if key_value.is_empty() {
         return Err(anyhow!("empty key value"));
     }
@@ -287,7 +328,7 @@ fn cmd_add(
 
 fn cmd_list(path: &std::path::Path) -> Result<()> {
     let vault = Vault::open(path)?;
-    let pw = rpassword::prompt_password("Master password: ")?;
+    let pw = prompt_secret("Master password: ")?;
     let token = vault
         .unlock(&pw)
         .context("unlock failed (wrong password?)")?;
@@ -307,7 +348,7 @@ fn cmd_list(path: &std::path::Path) -> Result<()> {
 
 fn cmd_get(path: &std::path::Path, id: Uuid) -> Result<()> {
     let vault = Vault::open(path)?;
-    let pw = rpassword::prompt_password("Master password: ")?;
+    let pw = prompt_secret("Master password: ")?;
     let token = vault
         .unlock(&pw)
         .context("unlock failed (wrong password?)")?;
@@ -321,13 +362,110 @@ fn cmd_get(path: &std::path::Path, id: Uuid) -> Result<()> {
 
 fn cmd_delete(path: &std::path::Path, id: Uuid) -> Result<()> {
     let vault = Vault::open(path)?;
-    let pw = rpassword::prompt_password("Master password: ")?;
+    let pw = prompt_secret("Master password: ")?;
     let token = vault
         .unlock(&pw)
         .context("unlock failed (wrong password?)")?;
     vault.delete_key(token, id).context("deleting key")?;
     println!("✓ deleted {id}");
     vault.lock(token).ok();
+    Ok(())
+}
+
+fn cmd_supersede(path: &std::path::Path, old_id: Uuid, replacement: Uuid) -> Result<()> {
+    let vault = Vault::open(path)?;
+    let pw = prompt_secret("Master password: ")?;
+    let token = vault
+        .unlock(&pw)
+        .context("unlock failed (wrong password?)")?;
+    vault
+        .mark_superseded(old_id, replacement)
+        .with_context(|| format!("entry_not_found: {old_id} or {replacement}"))?;
+    println!("superseded {old_id} -> {replacement}");
+    vault.lock(token).ok();
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct AuditLogOut {
+    events: Vec<AuditEvent>,
+    count: usize,
+    window_days: i64,
+    vault_path: String,
+}
+
+fn cmd_audit_log(
+    path: &std::path::Path,
+    since_days: i64,
+    json: bool,
+    provider: Option<&str>,
+    account: Option<&str>,
+) -> Result<()> {
+    if since_days < 1 {
+        return Err(anyhow!("since-days must be >= 1"));
+    }
+    let vault = Vault::open(path)?;
+    let pw = prompt_secret("Master password: ")?;
+    let token = vault
+        .unlock(&pw)
+        .context("unlock failed (wrong password?)")?;
+    let cutoff = Utc::now() - Duration::days(since_days);
+    let mut events = Vec::new();
+    for event in vault.audit_events().context("reading audit events")? {
+        let ts = DateTime::parse_from_rfc3339(&event.ts_utc)
+            .map(|dt| dt.with_timezone(&Utc))
+            .with_context(|| format!("bad audit timestamp: {}", event.ts_utc))?;
+        if ts < cutoff {
+            continue;
+        }
+        if let Some(provider) = provider {
+            if !event
+                .provider
+                .as_deref()
+                .map(|value| value.eq_ignore_ascii_case(provider))
+                .unwrap_or(false)
+            {
+                continue;
+            }
+        }
+        if let Some(account) = account {
+            if !event
+                .project
+                .as_deref()
+                .map(|value| value.eq_ignore_ascii_case(account))
+                .unwrap_or(false)
+            {
+                continue;
+            }
+        }
+        events.push(event);
+    }
+    vault.lock(token).ok();
+
+    let vault_path = path
+        .canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .display()
+        .to_string();
+    if json {
+        let out = AuditLogOut {
+            count: events.len(),
+            events,
+            window_days: since_days,
+            vault_path,
+        };
+        serde_json::to_writer_pretty(std::io::stdout(), &out)?;
+        println!();
+    } else {
+        if events.is_empty() {
+            println!("(no audit events)");
+        } else {
+            println!("{} event(s) in last {since_days} day(s):", events.len());
+            for event in &events {
+                print_audit_event(event);
+            }
+        }
+    }
     Ok(())
 }
 
@@ -383,7 +521,7 @@ fn cmd_import(
     }
 
     let vault = Vault::open(path).context("opening vault")?;
-    let pw = rpassword::prompt_password("Master password: ")?;
+    let pw = prompt_secret("Master password: ")?;
     let token = vault
         .unlock(&pw)
         .context("unlock failed (wrong password?)")?;
@@ -472,7 +610,7 @@ fn cmd_import_batch(
     }
 
     let vault = Vault::open(path).context("opening vault")?;
-    let pw = rpassword::prompt_password("Master password: ")?;
+    let pw = prompt_secret("Master password: ")?;
     let token = vault
         .unlock(&pw)
         .context("unlock failed (wrong password?)")?;
@@ -851,7 +989,19 @@ fn read_runtime_password(
         return Ok(password);
     }
 
-    rpassword::prompt_password("Master password: ").context("reading password")
+    prompt_secret("Master password: ").context("reading password")
+}
+
+fn prompt_secret(prompt: &str) -> std::io::Result<String> {
+    match rpassword::prompt_password(prompt) {
+        Ok(value) => Ok(value),
+        Err(err) if err.raw_os_error() == Some(6) => {
+            let mut line = String::new();
+            std::io::stdin().lock().read_line(&mut line)?;
+            Ok(line.trim_end_matches(['\r', '\n']).to_string())
+        }
+        Err(err) => Err(err),
+    }
 }
 
 fn resolve_manifest_key(spec: &ExecEnvVar, metadata: &[KeyMetadata]) -> Result<Uuid> {
@@ -971,6 +1121,25 @@ fn print_metadata(m: &KeyMetadata) {
     if let Some(t) = m.last_used_at {
         println!("  last used: {}", t.to_rfc3339());
     }
+    if let Some(id) = m.superseded_by {
+        println!("  superseded by: {id}");
+    }
+}
+
+fn print_audit_event(event: &AuditEvent) {
+    let superseded_by = event
+        .superseded_by
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    println!(
+        "{}  {:<10}  {:<12}  {:<24}  {}  superseded_by={}",
+        event.ts_utc,
+        event.kind.as_str(),
+        event.provider.as_deref().unwrap_or("-"),
+        event.label.as_deref().unwrap_or("-"),
+        event.entry_id,
+        superseded_by
+    );
 }
 
 fn salt_path(vault: &std::path::Path) -> PathBuf {

@@ -19,6 +19,8 @@ use uuid::Uuid;
 #[serde(rename_all = "snake_case")]
 pub enum Provider {
     Anthropic,
+    #[serde(rename = "github")]
+    GitHub,
     // Override: snake_case would mangle `OpenAI` → `open_a_i`.
     #[serde(rename = "openai")]
     OpenAI,
@@ -38,6 +40,7 @@ impl Provider {
     pub fn as_str(&self) -> &'static str {
         match self {
             Provider::Anthropic => "anthropic",
+            Provider::GitHub => "github",
             Provider::OpenAI => "openai",
             Provider::Google => "google",
             Provider::Replicate => "replicate",
@@ -59,6 +62,7 @@ impl Provider {
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "anthropic" => Some(Self::Anthropic),
+            "github" => Some(Self::GitHub),
             "openai" => Some(Self::OpenAI),
             "google" => Some(Self::Google),
             "replicate" => Some(Self::Replicate),
@@ -100,6 +104,8 @@ pub struct KeyMetadata {
     pub status: KeyStatus,
     pub notes: Option<String>,
     pub key_format_valid: bool,
+    #[serde(default)]
+    pub superseded_by: Option<Uuid>,
 }
 
 // ── AddKeyInput ──────────────────────────────────────────────────────────────
@@ -143,6 +149,7 @@ mod tests {
     fn provider_roundtrips_through_string() {
         for p in [
             Provider::Anthropic,
+            Provider::GitHub,
             Provider::OpenAI,
             Provider::Google,
             Provider::Replicate,
@@ -190,6 +197,7 @@ mod tests {
             status: KeyStatus::Active,
             notes: None,
             key_format_valid: true,
+            superseded_by: None,
         };
         let s = serde_json::to_string(&m).unwrap();
         // KeyMetadata never contains plaintext, but verify the field shape

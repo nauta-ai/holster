@@ -25,7 +25,7 @@ use secrecy::{ExposeSecret, Secret};
 use uuid::Uuid;
 
 use crate::agent_profile::AgentProfileStore;
-use crate::audit::{AuditEvent, AuditLogger, AuditOutcome};
+use crate::audit::{AuditEvent, AuditLogger, AuditOutcome, EventKind, FetchAuditEvent};
 use crate::crypto::{decrypt_key_value, derive_keys, encrypt_key_value, generate_salt};
 use crate::db::{Database, InsertKeyParams};
 use crate::error::VaultError;
@@ -178,7 +178,10 @@ impl Vault {
             expires_at: input.expires_at,
             notes: input.notes,
         };
-        self.with_db(|db| db.insert_key(params))
+        let metadata = self.with_db(|db| db.insert_key(params))?;
+        let event = AuditEvent::from_metadata(EventKind::Add, &metadata);
+        self.append_audit_event(event)?;
+        Ok(metadata)
     }
 
     pub fn list_keys(&self, token: SessionToken) -> Result<Vec<KeyMetadata>, VaultError> {
@@ -207,9 +210,29 @@ impl Vault {
 
     pub fn delete_key(&self, token: SessionToken, id: Uuid) -> Result<(), VaultError> {
         self.sessions.validate(token)?;
+        let metadata = self.with_db(|db| db.select_key_by_id(id).map(|rec| rec.metadata))?;
         self.with_db(|db| db.delete_key(id))?;
+        let event = AuditEvent::from_metadata(EventKind::Delete, &metadata);
+        self.append_audit_event(event)?;
         let _ = self.sessions.touch(token);
         Ok(())
+    }
+
+    pub fn audit_events(&self) -> Result<Vec<AuditEvent>, VaultError> {
+        self.with_db(|db| db.select_audit_events())
+    }
+
+    pub fn append_audit_event(&self, event: AuditEvent) -> Result<(), VaultError> {
+        self.with_db(|db| db.append_audit_event(&event))
+    }
+
+    pub fn mark_superseded(&self, old: Uuid, new: Uuid) -> Result<(), VaultError> {
+        let old_metadata = self
+            .with_db(|db| db.select_key_by_id(old).map(|rec| rec.metadata))
+            .map_err(|_| VaultError::EntryNotFound(old))?;
+        self.with_db(|db| db.mark_superseded(old, new))?;
+        let event = AuditEvent::supersede(&old_metadata, new);
+        self.append_audit_event(event)
     }
 
     /// Fetch a key for an agent through a metadata allowlist and audit logger.
@@ -230,7 +253,7 @@ impl Vault {
         let metadata = self.with_db(|db| db.select_key_by_id(id).map(|record| record.metadata))?;
 
         if !profiles.allows(agent_id, &metadata) {
-            let event = AuditEvent::fetch(
+            let event = FetchAuditEvent::fetch(
                 agent_id,
                 &metadata,
                 AuditOutcome::Denied,
@@ -241,7 +264,7 @@ impl Vault {
         }
 
         let secret = self.get_key_value(token, id)?;
-        let event = AuditEvent::fetch(agent_id, &metadata, AuditOutcome::Allowed, None);
+        let event = FetchAuditEvent::fetch(agent_id, &metadata, AuditOutcome::Allowed, None);
         audit.log(&event)?;
         Ok(secret)
     }
@@ -370,6 +393,24 @@ mod tests {
         vault.add_key(token, input).unwrap().id
     }
 
+    fn add_key_with(
+        vault: &Vault,
+        token: SessionToken,
+        provider: Provider,
+        label: &str,
+        project_tag: &str,
+    ) -> Uuid {
+        let input = AddKeyInput {
+            provider,
+            label: label.to_string(),
+            key_value: format!("sk-test-{label}-000000000000"),
+            project_tag: Some(project_tag.to_string()),
+            expires_at: None,
+            notes: None,
+        };
+        vault.add_key(token, input).unwrap().id
+    }
+
     fn codex_fake_profiles() -> AgentProfileStore {
         AgentProfileStore::new(vec![AgentProfile::new(
             "codex",
@@ -482,6 +523,74 @@ mod tests {
         vault.delete_key(token, id).unwrap();
         let err = vault.get_key_value(token, id).unwrap_err();
         assert!(matches!(err, VaultError::KeyNotFound(_)));
+    }
+
+    #[test]
+    fn audit_event_round_trips_after_reopen() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("vault.db");
+        let vault = Vault::create(&path, PWD).unwrap();
+        let token = vault.unlock(PWD).unwrap();
+
+        let first = add_key_with(&vault, token, Provider::Anthropic, "first", "acct-a");
+        let second = add_key_with(&vault, token, Provider::OpenAI, "second", "acct-b");
+        let third = add_key_with(&vault, token, Provider::Stripe, "third", "acct-c");
+        vault.delete_key(token, third).unwrap();
+        vault.mark_superseded(first, second).unwrap();
+
+        let events = vault.audit_events().unwrap();
+        assert_eq!(events.len(), 5);
+        assert_eq!(
+            events.iter().map(|event| event.kind).collect::<Vec<_>>(),
+            vec![
+                EventKind::Add,
+                EventKind::Add,
+                EventKind::Add,
+                EventKind::Delete,
+                EventKind::Supersede,
+            ]
+        );
+        drop(vault);
+
+        let reopened = Vault::open(&path).unwrap();
+        let _token = reopened.unlock(PWD).unwrap();
+        let reopened_events = reopened.audit_events().unwrap();
+        assert_eq!(reopened_events.len(), 5);
+        assert_eq!(reopened_events[0].entry_id, first);
+        assert_eq!(reopened_events[4].superseded_by, Some(second));
+    }
+
+    #[test]
+    fn supersede_preserves_old_entry() {
+        let (_dir, vault) = fresh_vault();
+        let token = vault.unlock(PWD).unwrap();
+        let old = add_key_with(&vault, token, Provider::GitHub, "old", "acct");
+        let new = add_key_with(&vault, token, Provider::GitHub, "new", "acct");
+
+        vault.mark_superseded(old, new).unwrap();
+        let metas = vault.list_keys(token).unwrap();
+        let old_meta = metas.iter().find(|meta| meta.id == old).unwrap();
+        let new_meta = metas.iter().find(|meta| meta.id == new).unwrap();
+        assert_eq!(old_meta.superseded_by, Some(new));
+        assert_eq!(new_meta.superseded_by, None);
+    }
+
+    #[test]
+    fn supersede_missing_entry_returns_entry_not_found() {
+        let (_dir, vault) = fresh_vault();
+        let token = vault.unlock(PWD).unwrap();
+        let existing = add_sample_key(&vault, token);
+        let bogus = Uuid::new_v4();
+
+        let err = vault.mark_superseded(bogus, existing).unwrap_err();
+        assert!(matches!(err, VaultError::EntryNotFound(id) if id == bogus));
+    }
+
+    #[test]
+    fn backward_compat_empty_audit_log_defaults_to_no_events() {
+        let (_dir, vault) = fresh_vault();
+        let _token = vault.unlock(PWD).unwrap();
+        assert!(vault.audit_events().unwrap().is_empty());
     }
 
     #[test]

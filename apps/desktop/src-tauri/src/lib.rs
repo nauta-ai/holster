@@ -191,6 +191,7 @@ fn err_to_string(e: VaultError) -> String {
         VaultError::VaultNotFound => "No vault found at the configured path.".into(),
         VaultError::VaultAlreadyExists => "A vault already exists at that path.".into(),
         VaultError::KeyNotFound(_) => "Key not found.".into(),
+        VaultError::EntryNotFound(_) => "Vault entry not found.".into(),
         VaultError::AccessDenied => "Access denied by agent profile.".into(),
         // The DB / Crypto / Migration variants can carry implementation strings.
         // For SQLCipher, any wrong-key open surfaces here as a Db error. Map it
@@ -263,6 +264,7 @@ pub(crate) fn sanitize_env_name(raw: &str) -> String {
 pub(crate) fn default_env_name(provider: Provider, label: &str, used: &[String]) -> String {
     let base = match provider {
         Provider::Anthropic => "ANTHROPIC_API_KEY".to_string(),
+        Provider::GitHub => "GITHUB_TOKEN".to_string(),
         Provider::OpenAI => "OPENAI_API_KEY".to_string(),
         Provider::Google => "GOOGLE_API_KEY".to_string(),
         Provider::Replicate => "REPLICATE_API_TOKEN".to_string(),
