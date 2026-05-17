@@ -2,7 +2,7 @@
 
 Holster MCP exposes local Holster Doctor checks to MCP-compatible agents. The server is local-first: free tools shell out to the bundled `holster-doctor` binary and never send repository contents to a network service.
 
-<!-- mcp-name: io.github.nauta-ai/holster-mcp -->
+<!-- mcp-name: com.nautaai/holster-mcp -->
 
 ## Install
 
