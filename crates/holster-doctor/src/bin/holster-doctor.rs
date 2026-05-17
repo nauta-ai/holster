@@ -140,13 +140,14 @@ fn main() {
     }
 }
 
-fn run_scan(path: PathBuf, _depth: Option<usize>, json: bool) -> Result<(), String> {
+fn run_scan(path: PathBuf, depth: Option<usize>, json: bool) -> Result<(), String> {
     let started = Instant::now();
     let report = scanner::scan_local_path(scanner::ScanArgs {
         path: path.display().to_string(),
         follow_symlinks: false,
         respect_gitignore: false,
         max_file_size_bytes: 0,
+        max_depth: depth.unwrap_or(0),
     })?;
     let findings = report
         .detections

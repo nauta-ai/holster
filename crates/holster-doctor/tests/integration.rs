@@ -16,6 +16,7 @@ fn scan_fixture_repo_finds_redacted_secret_shape() {
         follow_symlinks: false,
         respect_gitignore: false,
         max_file_size_bytes: 0,
+        max_depth: 0,
     })
     .expect("scan succeeds");
 

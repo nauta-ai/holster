@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=69", "wheel>=0.43"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "holster-mcp"
+version = "0.1.0"
+description = "Holster MCP server for local secret scanning and rotation guidance."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "LicenseRef-Holster-Source-Available"
+authors = [{ name = "Nauta AI" }]
+dependencies = [
+  "mcp>=1.27,<1.28",
+  "pydantic>=2.7,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<9",
+  "build>=1.2,<2",
+  "cibuildwheel>=2.23,<3",
+]
+
+[project.scripts]
+holster-mcp = "holster_mcp.server:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+holster_mcp = ["bin/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

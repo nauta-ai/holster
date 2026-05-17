@@ -15,6 +15,8 @@ apps/desktop/src-tauri/gen/
 .DS_Store
 *.log
 logs/
+__pycache__/
+*.py[cod]
 .vscode/
 .idea/
 
@@ -48,6 +50,12 @@ visual-handoff/
 20*-holster-*.md
 marketing-artifact-test.txt
 .env.holster-backup-*
+
+# Python MCP local build outputs
+mcp/build/
+mcp/dist/
+mcp/src/holster_mcp.egg-info/
+mcp/src/holster_mcp/bin/holster-doctor
 
 # Backup files created before destructive edits — keep local, don't commit.
 *.bak

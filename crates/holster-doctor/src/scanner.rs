@@ -49,6 +49,9 @@ pub struct ScanArgs {
     /// Max file size to read. 0 = use default (5 MB).
     #[serde(default)]
     pub max_file_size_bytes: u64,
+    /// Maximum directory depth to scan. 0 = unlimited.
+    #[serde(default)]
+    pub max_depth: usize,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -203,6 +206,9 @@ pub fn scan_local_path(args: ScanArgs) -> Result<ScanReport, String> {
         .ignore(args.respect_gitignore)
         .hidden(false) // walk hidden dotfiles — that's where leaks hide
         .filter_entry(|entry| !is_in_skip_dir(entry.path()));
+    if args.max_depth > 0 {
+        builder.max_depth(Some(args.max_depth));
+    }
 
     let mut scanned_files = 0usize;
     let mut skipped_binary = 0usize;
@@ -586,6 +592,7 @@ mod tests {
             follow_symlinks: false,
             respect_gitignore: false,
             max_file_size_bytes: 0,
+            max_depth: 0,
         })
         .unwrap()
     }
@@ -603,6 +610,7 @@ mod tests {
             follow_symlinks: false,
             respect_gitignore: false,
             max_file_size_bytes: 0,
+            max_depth: 0,
         });
         assert!(r.is_err());
         assert!(r.unwrap_err().contains("filesystem root"));
@@ -619,6 +627,7 @@ mod tests {
             follow_symlinks: false,
             respect_gitignore: false,
             max_file_size_bytes: 0,
+            max_depth: 0,
         });
         assert!(r.is_err());
         assert!(r.unwrap_err().contains("HOME"));
@@ -631,6 +640,7 @@ mod tests {
             follow_symlinks: false,
             respect_gitignore: false,
             max_file_size_bytes: 0,
+            max_depth: 0,
         });
         assert!(r.is_err());
     }
@@ -671,6 +681,26 @@ mod tests {
     }
 
     #[test]
+    fn max_depth_limits_nested_scan() {
+        let dir = unique_tempdir("max-depth");
+        mk(
+            &dir,
+            "src/config/secrets.ts",
+            "export const k = \"sk-ant-api03-FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE0\"",
+        );
+        let report = scan_local_path(ScanArgs {
+            path: dir.display().to_string(),
+            follow_symlinks: false,
+            respect_gitignore: false,
+            max_file_size_bytes: 0,
+            max_depth: 2,
+        })
+        .unwrap();
+        assert_eq!(report.detections.len(), 0);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn skips_binary_files() {
         let dir = unique_tempdir("binary");
         let bin: Vec<u8> = vec![0x7f, 0x45, 0x4c, 0x46, 0x00, 0xff, 0xff, 0xff, 0x00, 0x00];
@@ -691,6 +721,7 @@ mod tests {
             follow_symlinks: false,
             respect_gitignore: false,
             max_file_size_bytes: 100, // tiny cap
+            max_depth: 0,
         })
         .unwrap();
         assert_eq!(report.skipped_oversize, 1);
