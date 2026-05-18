@@ -2,6 +2,7 @@
   import {
     listKeys,
     copyToClipboard,
+    retryMirrorKey,
     type KeyMetadataDto
   } from '$lib/api';
   import AddKeyDialog from './AddKeyDialog.svelte';
@@ -20,6 +21,7 @@
   let filter = $state('');
   let showAdd = $state(false);
   let confirmTarget = $state<KeyMetadataDto | null>(null);
+  let retryingMirrorId = $state<string | null>(null);
 
   function handleSessionError(msg: string) {
     const lower = msg.toLowerCase();
@@ -52,6 +54,21 @@
       const msg = err instanceof Error ? err.message : String(err);
       if (handleSessionError(msg)) return;
       onToast(`Copy failed: ${msg}`);
+    }
+  }
+
+  async function handleRetryMirror(key: KeyMetadataDto) {
+    retryingMirrorId = key.id;
+    try {
+      await retryMirrorKey(key.id);
+      onToast(`Runtime mirror synced for ${key.label}.`);
+      await refresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (handleSessionError(msg)) return;
+      onToast(`Runtime mirror still failed: ${msg}`);
+    } finally {
+      retryingMirrorId = null;
     }
   }
 
@@ -161,6 +178,19 @@
                     <span>last used {formatDate(key.last_used_at)}</span>
                   {/if}
                 </p>
+                {#if key.mirror_failed}
+                  <div class="mirror-warning" title={key.mirror_error ?? 'Mirror failed'}>
+                    <span aria-hidden="true">⚠</span>
+                    <span>Not mirrored to runtime vault.</span>
+                    <button
+                      type="button"
+                      onclick={() => handleRetryMirror(key)}
+                      disabled={retryingMirrorId === key.id}
+                    >
+                      {retryingMirrorId === key.id ? 'Retrying…' : 'Retry sync'}
+                    </button>
+                  </div>
+                {/if}
               </div>
             </div>
             <div class="vault-actions">
@@ -183,10 +213,14 @@
 {#if showAdd}
   <AddKeyDialog
     onClose={() => (showAdd = false)}
-    onAdded={() => {
+    onAdded={(key) => {
       showAdd = false;
       refresh();
-      onToast('Key added to the vault.');
+      if (key.mirror_failed) {
+        onToast('Key added. Runtime mirror needs retry before LaunchAgents can see it.');
+      } else {
+        onToast('Key added to the vault and mirrored to runtime.');
+      }
     }}
   />
 {/if}
@@ -405,5 +439,33 @@
   .vault-actions .vault-danger:hover {
     background: rgba(176, 74, 48, 0.15);
     border-color: rgba(240, 130, 110, 0.55);
+  }
+
+  .mirror-warning {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    color: #ffd166;
+    font-size: 12px;
+  }
+
+  .mirror-warning button {
+    background: rgba(255, 209, 102, 0.12);
+    color: #ffd166;
+    border: 1px solid rgba(255, 209, 102, 0.35);
+    border-radius: 6px;
+    padding: 3px 7px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .mirror-warning button:hover {
+    background: rgba(255, 209, 102, 0.18);
+  }
+
+  .mirror-warning button:disabled {
+    opacity: 0.65;
+    cursor: wait;
   }
 </style>

@@ -36,6 +36,8 @@ export interface KeyMetadataDto {
   last_used_at: string | null;
   status: string;
   notes: string | null;
+  mirror_failed: boolean;
+  mirror_error: string | null;
 }
 
 export interface AddKeyArgs {
@@ -95,10 +97,12 @@ async function mockInvoke<T>(command: string, args?: InvokeArgs): Promise<T> {
       project_tag: 'Buildbelt demo',
       created_at: now,
       expires_at: null,
-      last_used_at: now,
-      status: 'active',
-      notes: 'Dev preview sample only'
-    },
+        last_used_at: now,
+        status: 'active',
+        notes: 'Dev preview sample only',
+        mirror_failed: false,
+        mirror_error: null
+      },
     {
       id: 'demo-google',
       provider: 'google',
@@ -106,10 +110,12 @@ async function mockInvoke<T>(command: string, args?: InvokeArgs): Promise<T> {
       project_tag: 'Creative tools',
       created_at: now,
       expires_at: null,
-      last_used_at: null,
-      status: 'active',
-      notes: 'Dev preview sample only'
-    }
+        last_used_at: null,
+        status: 'active',
+        notes: 'Dev preview sample only',
+        mirror_failed: true,
+        mirror_error: 'mirror_password_not_in_keychain'
+      }
   ];
 
   switch (command) {
@@ -132,7 +138,15 @@ async function mockInvoke<T>(command: string, args?: InvokeArgs): Promise<T> {
         expires_at: null,
         last_used_at: null,
         status: 'active',
-        notes: null
+        notes: null,
+        mirror_failed: false,
+        mirror_error: null
+      } as T;
+    case 'retry_mirror_key':
+      return {
+        ...keys[1],
+        mirror_failed: false,
+        mirror_error: null
       } as T;
     case 'copy_to_clipboard':
       return 30 as T;
@@ -261,6 +275,10 @@ export async function addKey(args: AddKeyArgs): Promise<KeyMetadataDto> {
 
 export async function deleteKey(id: string): Promise<void> {
   await invoke<void>('delete_key', { id });
+}
+
+export async function retryMirrorKey(id: string): Promise<KeyMetadataDto> {
+  return await invoke<KeyMetadataDto>('retry_mirror_key', { id });
 }
 
 /**

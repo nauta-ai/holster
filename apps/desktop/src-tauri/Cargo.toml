@@ -31,6 +31,7 @@ uuid = { workspace = true }
 secrecy = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+keyring = "3.6.3"
 # Holster Auth (M4): local TOTP generation. The secret remains encrypted in the
 # vault; only the current short code crosses IPC when explicitly requested.
 hmac = "0.12"

@@ -22,4 +22,4 @@ pub use audit::{AuditEvent, AuditLogger, AuditOutcome, EventKind, FetchAuditEven
 pub use error::VaultError;
 pub use models::{AddKeyInput, KeyMetadata, KeyStatus, Provider};
 pub use session::SessionToken;
-pub use vault::Vault;
+pub use vault::{mirror_secret_to, MirrorError, MirrorSecretEntry, MirrorSecretInput, Vault};

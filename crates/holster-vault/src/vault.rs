@@ -17,11 +17,15 @@
 //! Every method except create/open/unlock validates the session token first.
 //! Calling any data method without a valid session → VaultError::InvalidSession.
 
+use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use secrecy::{ExposeSecret, Secret};
+use thiserror::Error;
 use uuid::Uuid;
 
 use crate::agent_profile::AgentProfileStore;
@@ -34,6 +38,116 @@ use crate::session::{SessionStore, SessionToken};
 
 const SALT_LEN: usize = 16;
 const MIN_PASSWORD_LEN: usize = 8;
+const MIRROR_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
+const MIRROR_LOCK_POLL: Duration = Duration::from_millis(25);
+
+#[derive(Debug, Error)]
+pub enum MirrorError {
+    #[error("mirror lock timed out")]
+    LockTimeout,
+
+    #[error("vault error: {0}")]
+    Vault(#[from] VaultError),
+
+    #[error("io error")]
+    Io(#[from] std::io::Error),
+}
+
+#[derive(Clone)]
+pub struct MirrorSecretInput {
+    pub id: Uuid,
+    pub provider: crate::models::Provider,
+    pub label: String,
+    pub key_value: String,
+    pub project_tag: Option<String>,
+    pub expires_at: Option<chrono::DateTime<Utc>>,
+    pub notes: Option<String>,
+}
+
+impl std::fmt::Debug for MirrorSecretInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MirrorSecretInput")
+            .field("id", &self.id)
+            .field("provider", &self.provider)
+            .field("label", &self.label)
+            .field("key_value", &"<redacted>")
+            .field("project_tag", &self.project_tag)
+            .field("expires_at", &self.expires_at)
+            .field("notes", &self.notes)
+            .finish()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum MirrorSecretEntry {
+    Add(MirrorSecretInput),
+    Delete { id: Uuid },
+    Supersede { old_id: Uuid, new_id: Uuid },
+}
+
+struct MirrorLock {
+    path: PathBuf,
+    _file: File,
+}
+
+impl Drop for MirrorLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+pub fn mirror_secret_to(
+    target_path: &Path,
+    target_password: &str,
+    entry: MirrorSecretEntry,
+) -> Result<Option<KeyMetadata>, MirrorError> {
+    if let Some(parent) = target_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let _lock = acquire_mirror_lock(target_path)?;
+    match entry {
+        MirrorSecretEntry::Add(input) => {
+            let vault = open_or_create_mirror_vault(target_path, target_password)?;
+            let token = vault.unlock(target_password)?;
+            let metadata = vault.add_key_with_id(token, input)?;
+            let _ = vault.lock(token);
+            Ok(Some(metadata))
+        }
+        MirrorSecretEntry::Delete { id } => {
+            if !target_path.exists() {
+                return Ok(None);
+            }
+            let vault = Vault::open(target_path)?;
+            let token = vault.unlock(target_password)?;
+            match vault.delete_key(token, id) {
+                Ok(()) => {
+                    let _ = vault.lock(token);
+                    Ok(None)
+                }
+                Err(VaultError::KeyNotFound(_)) => {
+                    let _ = vault.lock(token);
+                    Ok(None)
+                }
+                Err(err) => {
+                    let _ = vault.lock(token);
+                    Err(MirrorError::Vault(err))
+                }
+            }
+        }
+        MirrorSecretEntry::Supersede { old_id, new_id } => {
+            if !target_path.exists() {
+                return Ok(None);
+            }
+            let vault = Vault::open(target_path)?;
+            let token = vault.unlock(target_password)?;
+            let result = vault.mark_superseded(old_id, new_id);
+            let _ = vault.lock(token);
+            result?;
+            Ok(None)
+        }
+    }
+}
 
 /// Public Vault handle. Created via `Vault::create` (new) or `Vault::open` (existing).
 /// Operations require an active session via `unlock`.
@@ -162,13 +276,36 @@ impl Vault {
         token: SessionToken,
         input: AddKeyInput,
     ) -> Result<KeyMetadata, VaultError> {
+        self.add_key_with_id(
+            token,
+            MirrorSecretInput {
+                id: Uuid::new_v4(),
+                provider: input.provider,
+                label: input.label,
+                key_value: input.key_value,
+                project_tag: input.project_tag,
+                expires_at: input.expires_at,
+                notes: input.notes,
+            },
+        )
+    }
+
+    fn add_key_with_id(
+        &self,
+        token: SessionToken,
+        input: MirrorSecretInput,
+    ) -> Result<KeyMetadata, VaultError> {
+        if let Ok(existing) = self.with_db(|db| db.select_key_by_id(input.id).map(|r| r.metadata)) {
+            self.sessions.validate(token)?;
+            return Ok(existing);
+        }
+
         let aes_key = self.aes_key_for(token)?;
         let (ciphertext, nonce) = encrypt_key_value(&aes_key, &input.key_value)?;
 
-        let id = Uuid::new_v4();
         let now = Utc::now();
         let params = InsertKeyParams {
-            id,
+            id: input.id,
             provider: input.provider,
             label: input.label,
             project_tag: input.project_tag,
@@ -347,6 +484,50 @@ fn read_salt_sidecar(vault_path: &Path) -> Result<[u8; SALT_LEN], VaultError> {
     let mut out = [0u8; SALT_LEN];
     out.copy_from_slice(&bytes);
     Ok(out)
+}
+
+fn open_or_create_mirror_vault(path: &Path, password: &str) -> Result<Vault, VaultError> {
+    if path.exists() {
+        Vault::open(path)
+    } else {
+        Vault::create(path, password)
+    }
+}
+
+fn acquire_mirror_lock(target_path: &Path) -> Result<MirrorLock, MirrorError> {
+    let mut lock_path = target_path.to_path_buf();
+    let lock_name = format!(
+        "{}.mirror-lock",
+        lock_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("vault")
+    );
+    lock_path.set_file_name(lock_name);
+
+    let started = Instant::now();
+    loop {
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock_path)
+        {
+            Ok(file) => {
+                set_vault_file_perms(&lock_path);
+                return Ok(MirrorLock {
+                    path: lock_path,
+                    _file: file,
+                });
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                if started.elapsed() >= MIRROR_LOCK_TIMEOUT {
+                    return Err(MirrorError::LockTimeout);
+                }
+                thread::sleep(MIRROR_LOCK_POLL);
+            }
+            Err(err) => return Err(MirrorError::Io(err)),
+        }
+    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────

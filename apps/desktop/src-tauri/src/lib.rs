@@ -17,6 +17,9 @@
 //!   wrong password    → returns `BadPassword` (clean error, no stack)
 //!   session expired   → vault crate returns `SessionExpired`; UI re-prompts.
 
+use std::collections::HashMap;
+use std::fs::OpenOptions;
+use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
@@ -42,7 +45,8 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use uuid::Uuid;
 
 use holster_vault::{
-    AddKeyInput, KeyMetadata, KeyStatus, Provider, SessionToken, Vault, VaultError,
+    mirror_secret_to, AddKeyInput, KeyMetadata, KeyStatus, MirrorSecretEntry, MirrorSecretInput,
+    Provider, SessionToken, Vault, VaultError,
 };
 
 /// Auto-clear clipboard 30 seconds after a copy. Security feature.
@@ -51,6 +55,9 @@ const CLIPBOARD_AUTO_CLEAR_SECS: u64 = 30;
 /// Default vault filename. Lives under the OS-standard app-data dir.
 const DEFAULT_VAULT_FILENAME: &str = "vault.db";
 const DEFAULT_EXPORT_FILENAME: &str = ".env.local";
+const PERSONAS_MIRROR_VAULT_PATH: &str = "/Users/admin/.nauta/holster/personas.vault";
+const PERSONAS_KEYCHAIN_SERVICE: &str = "holster-personas-vault";
+const PERSONAS_KEYCHAIN_ACCOUNT: &str = "admin";
 
 // ── App state ────────────────────────────────────────────────────────────────
 
@@ -108,10 +115,18 @@ pub struct KeyMetadataDto {
     pub last_used_at: Option<DateTime<Utc>>,
     pub status: String,
     pub notes: Option<String>,
+    pub mirror_failed: bool,
+    pub mirror_error: Option<String>,
 }
 
 impl From<KeyMetadata> for KeyMetadataDto {
     fn from(m: KeyMetadata) -> Self {
+        KeyMetadataDto::from_with_mirror(m, None)
+    }
+}
+
+impl KeyMetadataDto {
+    fn from_with_mirror(m: KeyMetadata, mirror_error: Option<String>) -> Self {
         let status = match m.status {
             KeyStatus::Active => "active",
             KeyStatus::ExpiringSoon => "expiring_soon",
@@ -130,8 +145,23 @@ impl From<KeyMetadata> for KeyMetadataDto {
             last_used_at: m.last_used_at,
             status,
             notes: m.notes,
+            mirror_failed: mirror_error.is_some(),
+            mirror_error,
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct MirrorAuditEvent {
+    ts_utc: String,
+    operation: String,
+    provider: Option<String>,
+    label: Option<String>,
+    project: Option<String>,
+    primary_entry_id: String,
+    mirror_target: String,
+    result: String,
+    error: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -239,6 +269,125 @@ fn export_audit_log_path(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| format!("could not resolve app data dir: {e}"))?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("could not create app data dir: {e}"))?;
     Ok(dir.join("runtime-export-audit.jsonl"))
+}
+
+fn mirror_audit_log_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("could not resolve app data dir: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("could not create app data dir: {e}"))?;
+    Ok(dir.join("mirror-audit.jsonl"))
+}
+
+fn append_mirror_audit(app: &AppHandle, event: &MirrorAuditEvent) -> Result<(), String> {
+    let path = mirror_audit_log_path(app)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("could not create audit dir: {e}"))?;
+    }
+    let line =
+        serde_json::to_string(event).map_err(|e| format!("could not encode mirror audit: {e}"))?;
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("could not open mirror audit: {e}"))?;
+    set_secret_file_perms(&path)?;
+    writeln!(file, "{line}").map_err(|e| format!("could not write mirror audit: {e}"))?;
+    Ok(())
+}
+
+fn mirror_password_from_keychain() -> Result<String, String> {
+    let entry = keyring::Entry::new(PERSONAS_KEYCHAIN_SERVICE, PERSONAS_KEYCHAIN_ACCOUNT)
+        .map_err(|e| format!("mirror_keychain_entry_error: {e}"))?;
+    entry.get_password().map_err(|e| match e {
+        keyring::Error::NoEntry => "mirror_password_not_in_keychain".to_string(),
+        other => format!("mirror_keychain_read_error: {other}"),
+    })
+}
+
+fn mirror_target_path() -> PathBuf {
+    PathBuf::from(PERSONAS_MIRROR_VAULT_PATH)
+}
+
+fn mirror_audit_event(
+    operation: &str,
+    metadata: &KeyMetadata,
+    result: &str,
+    error: Option<String>,
+) -> MirrorAuditEvent {
+    MirrorAuditEvent {
+        ts_utc: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        operation: operation.to_string(),
+        provider: Some(metadata.provider.as_str().to_string()),
+        label: Some(metadata.label.clone()),
+        project: metadata.project_tag.clone(),
+        primary_entry_id: metadata.id.to_string(),
+        mirror_target: PERSONAS_MIRROR_VAULT_PATH.to_string(),
+        result: result.to_string(),
+        error,
+    }
+}
+
+fn attempt_personas_mirror(
+    app: &AppHandle,
+    operation: &str,
+    metadata: &KeyMetadata,
+    entry: MirrorSecretEntry,
+) -> Result<(), String> {
+    let password = match mirror_password_from_keychain() {
+        Ok(password) => password,
+        Err(err) => {
+            let _ = append_mirror_audit(
+                app,
+                &mirror_audit_event(operation, metadata, "failed", Some(err.clone())),
+            );
+            return Err(err);
+        }
+    };
+
+    let result = mirror_secret_to(&mirror_target_path(), &password, entry)
+        .map(|_| ())
+        .map_err(|e| e.to_string());
+    match &result {
+        Ok(()) => {
+            let _ = append_mirror_audit(
+                app,
+                &mirror_audit_event(operation, metadata, "success", None),
+            );
+        }
+        Err(err) => {
+            let _ = append_mirror_audit(
+                app,
+                &mirror_audit_event(operation, metadata, "failed", Some(err.clone())),
+            );
+        }
+    }
+    result
+}
+
+fn mirror_failure_map(app: &AppHandle) -> HashMap<String, String> {
+    let Ok(path) = mirror_audit_log_path(app) else {
+        return HashMap::new();
+    };
+    let Ok(file) = std::fs::File::open(path) else {
+        return HashMap::new();
+    };
+    let mut failures = HashMap::new();
+    for line in std::io::BufReader::new(file).lines().map_while(Result::ok) {
+        let Ok(event) = serde_json::from_str::<MirrorAuditEvent>(&line) else {
+            continue;
+        };
+        if event.result == "success" {
+            failures.remove(&event.primary_entry_id);
+        } else if event.result == "failed" {
+            failures.insert(
+                event.primary_entry_id,
+                event.error.unwrap_or_else(|| "mirror_failed".to_string()),
+            );
+        }
+    }
+    failures
 }
 
 pub(crate) fn sanitize_env_name(raw: &str) -> String {
@@ -536,7 +685,7 @@ fn lock_vault(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn list_keys(state: State<'_, AppState>) -> Result<Vec<KeyMetadataDto>, String> {
+fn list_keys(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<KeyMetadataDto>, String> {
     let session = state.session.lock().map_err(|_| "state lock poisoned")?;
     let vault = state.vault.lock().map_err(|_| "state lock poisoned")?;
     let token = session
@@ -547,11 +696,22 @@ fn list_keys(state: State<'_, AppState>) -> Result<Vec<KeyMetadataDto>, String> 
         .as_ref()
         .ok_or_else(|| err_to_string(VaultError::Locked))?;
     let metas = v.list_keys(token).map_err(err_to_string)?;
-    Ok(metas.into_iter().map(KeyMetadataDto::from).collect())
+    let mirror_failures = mirror_failure_map(&app);
+    Ok(metas
+        .into_iter()
+        .map(|meta| {
+            let mirror_error = mirror_failures.get(&meta.id.to_string()).cloned();
+            KeyMetadataDto::from_with_mirror(meta, mirror_error)
+        })
+        .collect())
 }
 
 #[tauri::command]
-fn add_key(args: AddKeyArgs, state: State<'_, AppState>) -> Result<KeyMetadataDto, String> {
+fn add_key(
+    args: AddKeyArgs,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<KeyMetadataDto, String> {
     let provider = Provider::from_str(&args.provider)
         .ok_or_else(|| format!("unknown provider: {}", args.provider))?;
     if args.label.trim().is_empty() {
@@ -572,6 +732,7 @@ fn add_key(args: AddKeyArgs, state: State<'_, AppState>) -> Result<KeyMetadataDt
     let v = vault
         .as_ref()
         .ok_or_else(|| err_to_string(VaultError::Locked))?;
+    let mirror_key_value = args.key_value.clone();
     let input = AddKeyInput {
         provider,
         label: args.label,
@@ -581,11 +742,26 @@ fn add_key(args: AddKeyArgs, state: State<'_, AppState>) -> Result<KeyMetadataDt
         notes: args.notes.filter(|s| !s.trim().is_empty()),
     };
     let meta = v.add_key(token, input).map_err(err_to_string)?;
-    Ok(meta.into())
+    let mirror_result = attempt_personas_mirror(
+        &app,
+        "add",
+        &meta,
+        MirrorSecretEntry::Add(MirrorSecretInput {
+            id: meta.id,
+            provider: meta.provider,
+            label: meta.label.clone(),
+            key_value: mirror_key_value,
+            project_tag: meta.project_tag.clone(),
+            expires_at: meta.expires_at,
+            notes: meta.notes.clone(),
+        }),
+    );
+    let mirror_error = mirror_result.err();
+    Ok(KeyMetadataDto::from_with_mirror(meta, mirror_error))
 }
 
 #[tauri::command]
-fn delete_key(id: String, state: State<'_, AppState>) -> Result<(), String> {
+fn delete_key(id: String, app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let uuid = Uuid::parse_str(&id).map_err(|_| "invalid id".to_string())?;
     let session = state.session.lock().map_err(|_| "state lock poisoned")?;
     let vault = state.vault.lock().map_err(|_| "state lock poisoned")?;
@@ -596,7 +772,61 @@ fn delete_key(id: String, state: State<'_, AppState>) -> Result<(), String> {
     let v = vault
         .as_ref()
         .ok_or_else(|| err_to_string(VaultError::Locked))?;
-    v.delete_key(token, uuid).map_err(err_to_string)
+    let metadata = v
+        .list_keys(token)
+        .map_err(err_to_string)?
+        .into_iter()
+        .find(|meta| meta.id == uuid);
+    v.delete_key(token, uuid).map_err(err_to_string)?;
+    if let Some(meta) = metadata {
+        let _ = attempt_personas_mirror(
+            &app,
+            "delete",
+            &meta,
+            MirrorSecretEntry::Delete { id: uuid },
+        );
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn retry_mirror_key(
+    id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<KeyMetadataDto, String> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| "invalid id".to_string())?;
+    let session = state.session.lock().map_err(|_| "state lock poisoned")?;
+    let vault = state.vault.lock().map_err(|_| "state lock poisoned")?;
+    let token = session
+        .as_ref()
+        .copied()
+        .ok_or_else(|| err_to_string(VaultError::InvalidSession))?;
+    let v = vault
+        .as_ref()
+        .ok_or_else(|| err_to_string(VaultError::Locked))?;
+    let metadata = v
+        .list_keys(token)
+        .map_err(err_to_string)?
+        .into_iter()
+        .find(|meta| meta.id == uuid)
+        .ok_or_else(|| err_to_string(VaultError::KeyNotFound(uuid)))?;
+    let secret = v.get_key_value(token, uuid).map_err(err_to_string)?;
+    attempt_personas_mirror(
+        &app,
+        "add",
+        &metadata,
+        MirrorSecretEntry::Add(MirrorSecretInput {
+            id: metadata.id,
+            provider: metadata.provider,
+            label: metadata.label.clone(),
+            key_value: secret.expose_secret().clone(),
+            project_tag: metadata.project_tag.clone(),
+            expires_at: metadata.expires_at,
+            notes: metadata.notes.clone(),
+        }),
+    )?;
+    Ok(KeyMetadataDto::from_with_mirror(metadata, None))
 }
 
 /// Decrypt a key by id and write it to the OS clipboard. Schedules a clipboard
@@ -1451,6 +1681,7 @@ pub fn run() {
             list_keys,
             add_key,
             delete_key,
+            retry_mirror_key,
             copy_to_clipboard,
             export_runtime_profile,
             scan_project_for_secrets,

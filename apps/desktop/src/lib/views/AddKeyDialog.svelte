@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { addKey, PROVIDERS } from '$lib/api';
+  import { addKey, PROVIDERS, type KeyMetadataDto } from '$lib/api';
 
   interface Props {
     onClose: () => void;
-    onAdded: () => void;
+    onAdded: (key: KeyMetadataDto) => void;
   }
   let { onClose, onAdded }: Props = $props();
 
@@ -22,7 +22,7 @@
     if (!key_value) { error = 'Key value is required.'; return; }
     busy = true;
     try {
-      await addKey({
+      const added = await addKey({
         provider,
         label: label.trim(),
         project_tag: project_tag.trim() || null,
@@ -31,7 +31,7 @@
       });
       // Best-effort clear before onAdded triggers a re-render.
       key_value = '';
-      onAdded();
+      onAdded(added);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
