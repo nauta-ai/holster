@@ -14,7 +14,13 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 zeroize = { workspace = true }
 secrecy = { workspace = true }
-rusqlite = { version = "0.31", features = ["bundled-sqlcipher"] }
+# v0.7.0 (CI fix): switched from `bundled-sqlcipher` -> `bundled-sqlcipher-vendored-openssl`
+# so Windows + Linux runners don't need system OpenSSL installed. Vendored variant
+# compiles OpenSSL from source as part of the build -- same SQLCipher binary, no
+# system-level dependency. Trade-off: ~30% longer build, acceptable for the
+# portability win (the macOS x86_64 + Windows MSVC builds in release.yml hit
+# the SQLCipher-needs-system-openssl failure on first push of v0.7.0).
+rusqlite = { version = "0.31", features = ["bundled-sqlcipher-vendored-openssl"] }
 argon2 = "0.5"
 aes-gcm = "0.10"
 rand = "0.8"

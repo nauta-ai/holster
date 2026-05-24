@@ -75,8 +75,9 @@ fn test_keychain_flag_rejected_on_linux() {
         stderr.contains("--password-keychain-service is only supported on macOS"),
         "unexpected stderr:\n{stderr}"
     );
+    // v0.7.0: message updated to reflect new --password-stdin flag + Windows support
     assert!(
-        stderr.contains("use --password-env <ENV_NAME> or pipe the password via stdin"),
+        stderr.contains("--password-env") && stderr.contains("--password-stdin"),
         "unexpected stderr:\n{stderr}"
     );
 }
