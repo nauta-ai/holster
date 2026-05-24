@@ -16,9 +16,18 @@ jobs:
           - os: macos-14
             target: aarch64-apple-darwin
             artifact: holster-cli-macos-arm64
+          # v0.7.0: added macOS Intel + Windows targets so the published
+          # release covers Mac (arm64 + x86_64), Linux x86_64, and
+          # Windows x86_64. Previous releases shipped macOS-arm64 + Linux only.
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: holster-cli-macos-x86_64
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             artifact: holster-cli-linux-x86_64
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            artifact: holster-cli-windows-x86_64
 
     steps:
       - name: Checkout
@@ -47,7 +56,8 @@ jobs:
         if: runner.os == 'Linux'
         run: strip target/${{ matrix.target }}/release/holster-cli
 
-      - name: Package
+      - name: Package (Unix — tar.gz)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           mkdir -p dist
@@ -55,13 +65,34 @@ jobs:
           tar -C dist -czf ${{ matrix.artifact }}.tar.gz holster-cli
           shasum -a 256 ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.tar.gz.sha256
 
-      - name: Upload release artifact
+      - name: Package (Windows — zip + .exe)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/holster-cli.exe" -Destination dist/
+          Compress-Archive -Path dist/holster-cli.exe -DestinationPath "${{ matrix.artifact }}.zip" -Force
+          $hash = (Get-FileHash -Algorithm SHA256 "${{ matrix.artifact }}.zip").Hash.ToLower()
+          "$hash  ${{ matrix.artifact }}.zip" | Out-File -Encoding ascii "${{ matrix.artifact }}.zip.sha256"
+
+      - name: Upload release artifact (Unix)
+        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: |
             ${{ matrix.artifact }}.tar.gz
             ${{ matrix.artifact }}.tar.gz.sha256
+          if-no-files-found: error
+
+      - name: Upload release artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.zip
+            ${{ matrix.artifact }}.zip.sha256
           if-no-files-found: error
 
   release:
@@ -87,7 +118,11 @@ jobs:
           files: |
             artifacts/holster-cli-macos-arm64/holster-cli-macos-arm64.tar.gz
             artifacts/holster-cli-macos-arm64/holster-cli-macos-arm64.tar.gz.sha256
+            artifacts/holster-cli-macos-x86_64/holster-cli-macos-x86_64.tar.gz
+            artifacts/holster-cli-macos-x86_64/holster-cli-macos-x86_64.tar.gz.sha256
             artifacts/holster-cli-linux-x86_64/holster-cli-linux-x86_64.tar.gz
             artifacts/holster-cli-linux-x86_64/holster-cli-linux-x86_64.tar.gz.sha256
+            artifacts/holster-cli-windows-x86_64/holster-cli-windows-x86_64.zip
+            artifacts/holster-cli-windows-x86_64/holster-cli-windows-x86_64.zip.sha256
           draft: false
           generate_release_notes: true

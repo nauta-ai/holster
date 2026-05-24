@@ -52,11 +52,71 @@ enum Command {
         project: Option<String>,
         #[arg(long)]
         notes: Option<String>,
+        /// v0.2.0: read master password from environment variable.
+        #[arg(long)]
+        password_env: Option<String>,
+        /// v0.2.0: read master password from stdin (first line).
+        #[arg(long)]
+        password_stdin: bool,
+        /// v0.2.0: read master password from macOS Keychain (service name).
+        #[arg(long)]
+        password_keychain_service: Option<String>,
+        /// v0.2.0: macOS Keychain account paired with --password-keychain-service.
+        #[arg(long)]
+        password_keychain_account: Option<String>,
     },
     /// List metadata for all keys (no plaintext shown).
     List { path: PathBuf },
     /// Decrypt and print a key value.
-    Get { path: PathBuf, id: Uuid },
+    Get {
+        path: PathBuf,
+        id: Uuid,
+        /// v0.2.0: read master password from environment variable.
+        #[arg(long)]
+        password_env: Option<String>,
+        /// v0.2.0: read master password from stdin (first line).
+        #[arg(long)]
+        password_stdin: bool,
+        /// v0.2.0: read master password from macOS Keychain (service name).
+        #[arg(long)]
+        password_keychain_service: Option<String>,
+        /// v0.2.0: macOS Keychain account paired with --password-keychain-service.
+        #[arg(long)]
+        password_keychain_account: Option<String>,
+    },
+    /// v0.2.0: Rotate the vault master password.
+    /// Re-encrypts every entry under a new master + regenerates the salt
+    /// atomically. Optionally updates a macOS Keychain entry to cache the
+    /// new password for daemon use.
+    RotateMaster {
+        path: PathBuf,
+        /// Read OLD master password from environment variable.
+        #[arg(long)]
+        old_password_env: Option<String>,
+        /// Read OLD master password from macOS Keychain (service name).
+        #[arg(long)]
+        old_password_keychain_service: Option<String>,
+        /// macOS Keychain account paired with --old-password-keychain-service.
+        #[arg(long)]
+        old_password_keychain_account: Option<String>,
+        /// Read OLD master password from stdin (first line).
+        #[arg(long)]
+        old_password_stdin: bool,
+        /// Read NEW master password from environment variable
+        /// (skips interactive confirm — caller is responsible for strength).
+        #[arg(long)]
+        new_password_env: Option<String>,
+        /// Read NEW master password from stdin (second line if
+        /// --old-password-stdin also set; otherwise first line).
+        #[arg(long)]
+        new_password_stdin: bool,
+        /// After successful rotation, also update the named macOS Keychain
+        /// entry to the NEW password so daemons that read it (e.g. via
+        /// `exec-env --password-keychain-service X --password-keychain-account Y`)
+        /// keep working without manual intervention. Format: SERVICE,ACCOUNT.
+        #[arg(long)]
+        keychain_update: Option<String>,
+    },
     /// Delete a key by id.
     Delete { path: PathBuf, id: Uuid },
     /// Mark one vault entry as superseded by another.
@@ -193,9 +253,56 @@ fn run(cli: Cli) -> Result<()> {
             label,
             project,
             notes,
-        } => cmd_add(&path, provider.into(), label, project, notes),
+            password_env,
+            password_stdin,
+            password_keychain_service,
+            password_keychain_account,
+        } => cmd_add(
+            &path,
+            provider.into(),
+            label,
+            project,
+            notes,
+            password_env.as_deref(),
+            password_stdin,
+            password_keychain_service.as_deref(),
+            password_keychain_account.as_deref(),
+        ),
         Command::List { path } => cmd_list(&path),
-        Command::Get { path, id } => cmd_get(&path, id),
+        Command::Get {
+            path,
+            id,
+            password_env,
+            password_stdin,
+            password_keychain_service,
+            password_keychain_account,
+        } => cmd_get(
+            &path,
+            id,
+            password_env.as_deref(),
+            password_stdin,
+            password_keychain_service.as_deref(),
+            password_keychain_account.as_deref(),
+        ),
+        Command::RotateMaster {
+            path,
+            old_password_env,
+            old_password_keychain_service,
+            old_password_keychain_account,
+            old_password_stdin,
+            new_password_env,
+            new_password_stdin,
+            keychain_update,
+        } => cmd_rotate_master(
+            &path,
+            old_password_env.as_deref(),
+            old_password_keychain_service.as_deref(),
+            old_password_keychain_account.as_deref(),
+            old_password_stdin,
+            new_password_env.as_deref(),
+            new_password_stdin,
+            keychain_update.as_deref(),
+        ),
         Command::Delete { path, id } => cmd_delete(&path, id),
         Command::Supersede {
             path,
@@ -298,9 +405,19 @@ fn cmd_add(
     label: String,
     project: Option<String>,
     notes: Option<String>,
+    password_env: Option<&str>,
+    password_stdin: bool,
+    password_keychain_service: Option<&str>,
+    password_keychain_account: Option<&str>,
 ) -> Result<()> {
     let vault = Vault::open(path).context("opening vault")?;
-    let pw = prompt_secret("Master password: ")?;
+    let pw = read_password_with_sources(
+        password_env,
+        password_keychain_service,
+        password_keychain_account,
+        password_stdin,
+        "Master password: ",
+    )?;
     let token = vault
         .unlock(&pw)
         .context("unlock failed (wrong password?)")?;
@@ -346,9 +463,22 @@ fn cmd_list(path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-fn cmd_get(path: &std::path::Path, id: Uuid) -> Result<()> {
+fn cmd_get(
+    path: &std::path::Path,
+    id: Uuid,
+    password_env: Option<&str>,
+    password_stdin: bool,
+    password_keychain_service: Option<&str>,
+    password_keychain_account: Option<&str>,
+) -> Result<()> {
     let vault = Vault::open(path)?;
-    let pw = prompt_secret("Master password: ")?;
+    let pw = read_password_with_sources(
+        password_env,
+        password_keychain_service,
+        password_keychain_account,
+        password_stdin,
+        "Master password: ",
+    )?;
     let token = vault
         .unlock(&pw)
         .context("unlock failed (wrong password?)")?;
@@ -358,6 +488,125 @@ fn cmd_get(path: &std::path::Path, id: Uuid) -> Result<()> {
     println!("{}", secret.expose_secret());
     vault.lock(token).ok();
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_rotate_master(
+    path: &std::path::Path,
+    old_password_env: Option<&str>,
+    old_password_keychain_service: Option<&str>,
+    old_password_keychain_account: Option<&str>,
+    old_password_stdin: bool,
+    new_password_env: Option<&str>,
+    new_password_stdin: bool,
+    keychain_update: Option<&str>,
+) -> Result<()> {
+    let vault = Vault::open(path).context("opening vault")?;
+
+    // OLD password — flexible source (env / stdin / keychain / interactive).
+    let old_pw = read_password_with_sources(
+        old_password_env,
+        old_password_keychain_service,
+        old_password_keychain_account,
+        old_password_stdin,
+        "OLD master password: ",
+    )?;
+
+    // NEW password — if a non-interactive source is provided, accept it as-is.
+    // Otherwise prompt twice with confirm.
+    let new_pw = if new_password_env.is_some() || new_password_stdin {
+        read_password_with_sources(
+            new_password_env,
+            None,
+            None,
+            new_password_stdin,
+            "NEW master password: ",
+        )?
+    } else {
+        let p1 = prompt_secret("NEW master password (min 8 chars): ")
+            .context("reading new password")?;
+        let p2 = prompt_secret("Confirm NEW master password: ")
+            .context("reading new password confirm")?;
+        if p1 != p2 {
+            return Err(anyhow!("NEW master passwords do not match"));
+        }
+        p1
+    };
+
+    if new_pw.len() < 8 {
+        return Err(anyhow!("NEW master password must be at least 8 characters"));
+    }
+    if new_pw == old_pw {
+        return Err(anyhow!(
+            "NEW master password is identical to OLD — rotation aborted"
+        ));
+    }
+
+    eprintln!("rotating master password (re-encrypts every entry + rekeys SQLCipher) ...");
+    let count = vault
+        .rotate_master(&old_pw, &new_pw)
+        .context("rotating master password")?;
+
+    println!("✓ rotated master: {count} entries re-encrypted under new master");
+    println!("  salt sidecar regenerated: {}", salt_path(path).display());
+    println!("  audit event appended (kind: master_rotated)");
+
+    // Optional: update macOS Keychain with the new password so daemons that
+    // cache via --password-keychain-* keep working without manual re-entry.
+    if let Some(spec) = keychain_update {
+        let (service, account) = parse_keychain_update_spec(spec)?;
+        update_keychain_password(service, account, &new_pw)?;
+        println!("  ✓ Keychain entry updated: service={service} account={account}");
+    } else {
+        println!("  note: if you cache this master in Keychain for daemons,");
+        println!("        run: security add-generic-password -U -s <SVC> -a <ACCT> -w '<NEW PW>'");
+        println!("        OR re-run with --keychain-update SERVICE,ACCOUNT");
+    }
+
+    Ok(())
+}
+
+fn parse_keychain_update_spec(spec: &str) -> Result<(&str, &str)> {
+    let (service, account) = spec
+        .split_once(',')
+        .ok_or_else(|| anyhow!("--keychain-update expects SERVICE,ACCOUNT (got: {spec:?})"))?;
+    let service = service.trim();
+    let account = account.trim();
+    if service.is_empty() || account.is_empty() {
+        return Err(anyhow!(
+            "--keychain-update SERVICE and ACCOUNT must both be non-empty"
+        ));
+    }
+    Ok((service, account))
+}
+
+#[cfg(target_os = "macos")]
+fn update_keychain_password(service: &str, account: &str, password: &str) -> Result<()> {
+    let status = ProcessCommand::new("/usr/bin/security")
+        .arg("add-generic-password")
+        .arg("-U")
+        .arg("-s")
+        .arg(service)
+        .arg("-a")
+        .arg(account)
+        .arg("-w")
+        .arg(password)
+        .status()
+        .context("running security add-generic-password -U")?;
+    if !status.success() {
+        return Err(anyhow!(
+            "security add-generic-password -U failed (exit {:?})",
+            status.code()
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn update_keychain_password(_service: &str, _account: &str, _password: &str) -> Result<()> {
+    Err(anyhow!(
+        "--keychain-update is only supported on macOS. Use OS-native credential storage on this platform."
+    ))
 }
 
 fn cmd_delete(path: &std::path::Path, id: Uuid) -> Result<()> {
@@ -953,6 +1202,29 @@ fn read_runtime_password(
     password_keychain_service: Option<&str>,
     password_keychain_account: Option<&str>,
 ) -> Result<String> {
+    read_password_with_sources(
+        password_env,
+        password_keychain_service,
+        password_keychain_account,
+        false,
+        "Master password: ",
+    )
+}
+
+/// v0.2.0: unified password-source resolver used by `get`, `add`, `rotate-master`,
+/// and `exec-env`. Order of precedence (first non-None wins):
+///   1. `--password-env <NAME>` — read from environment variable
+///   2. `--password-stdin` — read the first line of stdin
+///   3. `--password-keychain-service <SVC> [--password-keychain-account <ACCT>]`
+///      — macOS Keychain (errors on non-macOS if requested)
+///   4. Interactive TTY prompt (fallback)
+fn read_password_with_sources(
+    password_env: Option<&str>,
+    password_keychain_service: Option<&str>,
+    password_keychain_account: Option<&str>,
+    password_stdin: bool,
+    prompt: &str,
+) -> Result<String> {
     if let Some(name) = password_env {
         let value =
             std::env::var(name).with_context(|| format!("reading password env var {name}"))?;
@@ -962,13 +1234,26 @@ fn read_runtime_password(
         return Ok(value);
     }
 
+    if password_stdin {
+        let mut line = String::new();
+        std::io::stdin()
+            .lock()
+            .read_line(&mut line)
+            .context("reading password from stdin")?;
+        let pw = line.trim_end_matches(['\r', '\n']).to_string();
+        if pw.is_empty() {
+            return Err(anyhow!("stdin password was empty"));
+        }
+        return Ok(pw);
+    }
+
     #[cfg(not(target_os = "macos"))]
     {
         let _ = password_keychain_account;
         if password_keychain_service.is_some() {
             anyhow::bail!(
                 "--password-keychain-service is only supported on macOS. \
-                 On Linux, use --password-env <ENV_NAME> or pipe the password via stdin."
+                 On Linux/Windows, use --password-env <ENV_NAME> or --password-stdin."
             );
         }
     }
@@ -988,7 +1273,7 @@ fn read_runtime_password(
             .context("running security find-generic-password")?;
         if !output.status.success() {
             return Err(anyhow!(
-                "could not read Holster runtime password from Keychain"
+                "could not read Holster password from Keychain (service={service})"
             ));
         }
         let password = String::from_utf8(output.stdout)
@@ -1001,7 +1286,7 @@ fn read_runtime_password(
         return Ok(password);
     }
 
-    prompt_secret("Master password: ").context("reading password")
+    prompt_secret(prompt).context("reading password")
 }
 
 fn prompt_secret(prompt: &str) -> std::io::Result<String> {

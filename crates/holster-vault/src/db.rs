@@ -555,6 +555,102 @@ impl Database {
         }
         Ok(())
     }
+
+    // ── v0.2.0: atomic master-rotation primitive ─────────────────────────────
+
+    /// Atomic master-rotation primitive. Used by `Vault::rotate_master`.
+    ///
+    /// Performs the entire rotation under a single connection lock + exclusive
+    /// SQLite transaction:
+    ///   1. SELECT every row's (id, key_ciphertext, key_nonce)
+    ///   2. Hand them to `re_encrypt(old_ct, old_nonce)` which decrypts under
+    ///      the old AES key and re-encrypts under the new — returns (new_ct, new_nonce)
+    ///   3. UPDATE each row with the new ciphertext + nonce
+    ///   4. UPDATE vault_meta.salt with the new salt
+    ///   5. COMMIT the transaction
+    ///   6. PRAGMA rekey to swap the SQLCipher master key
+    ///
+    /// If any per-row re-encryption returns Err, the entire transaction
+    /// rolls back and the vault is left intact under the old keys.
+    /// Returns the number of rows re-encrypted on success.
+    pub fn rotate_master_atomic<F>(
+        &self,
+        new_salt: &[u8; 16],
+        new_sqlcipher_key: &[u8; 32],
+        mut re_encrypt: F,
+    ) -> Result<usize, VaultError>
+    where
+        F: FnMut(&[u8], &[u8; 12]) -> Result<(Vec<u8>, [u8; 12]), VaultError>,
+    {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| VaultError::Crypto("db mutex poisoned".into()))?;
+
+        // Read all rows first (inside lock, before transaction — pure SELECT).
+        // Two-step let so `stmt` outlives the MappedRows iterator (E0597 fix).
+        let rows: Vec<(String, Vec<u8>, Vec<u8>)> = {
+            let mut stmt = conn.prepare("SELECT id, key_ciphertext, key_nonce FROM keys")?;
+            let mapped = stmt.query_map([], |row| {
+                let id_s: String = row.get(0)?;
+                let ct: Vec<u8> = row.get(1)?;
+                let nonce_blob: Vec<u8> = row.get(2)?;
+                Ok((id_s, ct, nonce_blob))
+            })?;
+            mapped.collect::<Result<Vec<_>, _>>()?
+        };
+
+        // Re-encrypt each in memory FIRST so a crypto failure aborts before
+        // we touch the DB. If anything fails here, no transaction was opened.
+        let mut updates: Vec<(String, Vec<u8>, [u8; 12])> = Vec::with_capacity(rows.len());
+        for (id_s, old_ct, nonce_blob) in &rows {
+            if nonce_blob.len() != 12 {
+                return Err(VaultError::Crypto(format!(
+                    "nonce has wrong length on row {id_s}: got {}, want 12",
+                    nonce_blob.len()
+                )));
+            }
+            let mut old_nonce = [0u8; 12];
+            old_nonce.copy_from_slice(nonce_blob);
+            let (new_ct, new_nonce) = re_encrypt(old_ct, &old_nonce)?;
+            updates.push((id_s.clone(), new_ct, new_nonce));
+        }
+
+        // Now run the atomic UPDATE batch under exclusive transaction.
+        conn.execute_batch("BEGIN EXCLUSIVE")?;
+        let txn_result: Result<(), VaultError> = (|| {
+            for (id_s, new_ct, new_nonce) in &updates {
+                conn.execute(
+                    "UPDATE keys SET key_ciphertext = ?1, key_nonce = ?2 WHERE id = ?3",
+                    params![new_ct, &new_nonce[..], id_s],
+                )?;
+            }
+            // Update the mirrored salt in vault_meta so an open() that reads
+            // the sidecar gets the matching salt from both sources.
+            conn.execute(
+                "UPDATE vault_meta SET salt = ?1",
+                params![&new_salt[..]],
+            )?;
+            Ok(())
+        })();
+
+        match txn_result {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(e);
+            }
+        }
+
+        // Finally, rekey SQLCipher itself. This must happen AFTER the
+        // transaction commits so a failure here doesn't lose row updates.
+        // PRAGMA rekey is its own transaction at the page level.
+        let hex_key: String = new_sqlcipher_key.iter().map(|b| format!("{b:02x}")).collect();
+        let pragma = format!("PRAGMA rekey = \"x\'{hex_key}\'\"");
+        conn.execute_batch(&pragma)?;
+
+        Ok(updates.len())
+    }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

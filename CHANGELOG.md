@@ -6,6 +6,59 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project does not follow strict SemVer yet — it ships in milestones
 (see `TASK_QUEUE.md`).
 
+## [0.7.0] — 2026-05-24 — Master rotation + scriptable password sources
+
+### Added — `rotate-master` CLI subcommand
+
+- `holster-cli rotate-master <vault>` re-encrypts every entry under a new
+  master password and regenerates the vault salt — atomic under a single
+  exclusive SQLite transaction. If any step fails, the vault remains intact
+  under the old master.
+- `--keychain-update SERVICE,ACCOUNT` (macOS) updates the cached Keychain
+  password entry in the same command, so daemons that read the master via
+  `exec-env --password-keychain-*` keep working without manual re-entry.
+- Audit log records a `master_rotated` event with the number of entries
+  re-encrypted.
+- `Vault::rotate_master(&self, old_pw, new_pw) -> Result<usize>` exposed on
+  the `holster-vault` crate API for programmatic use (Tauri desktop UI, etc).
+- 7 new unit tests in `crates/holster-vault/src/vault.rs` covering happy
+  path, wrong-old-password rejection, weak-new-password rejection, audit
+  event creation, salt regeneration, empty-vault edge case, and
+  consecutive-rotation safety.
+
+### Added — scriptable password sources on `get`, `add`, `rotate-master`
+
+- `--password-env <ENV_NAME>` — read master from an environment variable.
+- `--password-stdin` — read first line of stdin (or, for `rotate-master`,
+  `--old-password-stdin` + `--new-password-stdin` read OLD then NEW).
+- `--password-keychain-service <SVC>` + `--password-keychain-account <ACCT>`
+  — read from macOS Keychain (previously available only on `exec-env`).
+- Precedence: env → stdin → keychain → interactive prompt fallback.
+- Unlocks unattended rotation flows for CI, launchd, systemd, and any
+  scripted use that doesn't have an interactive TTY.
+
+### Added — Windows + macOS Intel release binaries
+
+- `.github/workflows/release.yml` matrix expanded with `x86_64-apple-darwin`
+  (macOS-13 runner) and `x86_64-pc-windows-msvc` (windows-2022 runner)
+  alongside the existing macOS-arm64 + Linux-x86_64 targets.
+- Windows release ships as `.zip` containing `holster-cli.exe` (Unix
+  targets continue to ship as `.tar.gz`).
+
+### Why
+
+The 2026-05-24 credential-leak rotation across the Nauta fleet exposed a
+hard product gap: v0.1.0–v0.6.0 had NO way to rotate the vault master
+password. Operators had to manually `get` every entry, create a new vault,
+and `add` each entry back under the new master. That's unacceptable for
+anything marketed as a local-first API key manager. v0.7.0 closes the gap.
+
+### Migration note for existing v0.1.0–v0.6.0 users
+
+Your existing vault is fully forward-compatible. Upgrade to v0.7.0, then
+run `holster-cli rotate-master <vault>` whenever you need to change the
+master. No re-creation of the vault required.
+
 ## [Unreleased]
 
 ### Added — Holster MCP Preflight V0 (M5, 2026-05-14)

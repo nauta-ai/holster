@@ -1648,7 +1648,7 @@ dependencies = [
 
 [[package]]
 name = "holster-cli"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1665,7 +1665,7 @@ dependencies = [
 
 [[package]]
 name = "holster-desktop"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "chrono",
  "hmac",
@@ -1688,7 +1688,7 @@ dependencies = [
 
 [[package]]
 name = "holster-doctor"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1704,7 +1704,7 @@ dependencies = [
 
 [[package]]
 name = "holster-vault"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "aes-gcm",
  "argon2",

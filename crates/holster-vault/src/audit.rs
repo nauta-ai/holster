@@ -25,6 +25,9 @@ pub enum EventKind {
     Delete,
     Supersede,
     Rotate,
+    /// Master password rotation — affects all entries at once (count in label).
+    /// Added in v0.2.0 alongside `rotate-master` CLI subcommand.
+    MasterRotated,
 }
 
 impl EventKind {
@@ -34,6 +37,7 @@ impl EventKind {
             Self::Delete => "delete",
             Self::Supersede => "supersede",
             Self::Rotate => "rotate",
+            Self::MasterRotated => "master_rotated",
         }
     }
 
@@ -43,6 +47,7 @@ impl EventKind {
             "delete" => Some(Self::Delete),
             "supersede" => Some(Self::Supersede),
             "rotate" => Some(Self::Rotate),
+            "master_rotated" => Some(Self::MasterRotated),
             _ => None,
         }
     }
@@ -81,6 +86,21 @@ impl AuditEvent {
             label: Some(old.label.clone()),
             project: old.project_tag.clone(),
             superseded_by: Some(new),
+        }
+    }
+
+    /// Construct a MasterRotated audit event. Since rotation affects every
+    /// entry rather than one, `entry_id` is a sentinel nil-UUID and the
+    /// entry count goes in `label` (human-readable in audit log dumps).
+    pub fn master_rotated(entry_count: usize) -> Self {
+        Self {
+            ts_utc: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            kind: EventKind::MasterRotated,
+            entry_id: Uuid::nil(),
+            provider: None,
+            label: Some(format!("{entry_count} entries re-encrypted under new master")),
+            project: None,
+            superseded_by: None,
         }
     }
 }

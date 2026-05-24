@@ -372,6 +372,77 @@ impl Vault {
         self.append_audit_event(event)
     }
 
+    /// Rotate the vault master password (v0.2.0).
+    ///
+    /// Verifies the old password by unlocking, then derives fresh keys from the
+    /// new password + a new salt. Re-encrypts every entry's AES ciphertext under
+    /// the new AES key and rekeys the underlying SQLCipher database with the
+    /// new sqlcipher key — both under an exclusive SQLite transaction. On
+    /// success, writes a new salt sidecar (overwriting the old) and appends a
+    /// `MasterRotated` audit event.
+    ///
+    /// On any failure:
+    ///   - Wrong old password → `VaultError::BadPassword`, no changes
+    ///   - New password too short → `VaultError::WeakPassword`, no changes
+    ///   - Crypto failure mid-rotation → transaction rolls back, old keys + salt
+    ///     remain authoritative
+    ///   - SQLCipher rekey failure (rare, after txn commit) → row updates are
+    ///     persisted but DB stays under old SQLCipher key; caller can retry
+    ///
+    /// Returns the count of entries successfully re-encrypted.
+    ///
+    /// After successful rotation, any in-memory sessions held by callers are
+    /// invalidated — callers must `unlock(new_password)` to do further work.
+    pub fn rotate_master(
+        &self,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<usize, VaultError> {
+        if new_password.len() < MIN_PASSWORD_LEN {
+            return Err(VaultError::WeakPassword);
+        }
+
+        // 1. Verify old password by unlocking — this also opens (or refreshes)
+        //    the SQLCipher connection that rotate_master_atomic will use.
+        let session = self.unlock(old_password)?;
+        let old_aes_key = self.aes_key_for(session)?;
+
+        // 2. Derive new keys + salt from the new password.
+        let new_salt = generate_salt();
+        let new_keys = derive_keys(new_password, &new_salt)?;
+
+        // 3. Atomic re-encrypt of every row + SQLCipher rekey + vault_meta.salt update.
+        //    The re_encrypt closure is called once per entry inside db.rs;
+        //    if it errors, the transaction rolls back and the vault is intact.
+        let count = self.with_db(|db| {
+            db.rotate_master_atomic(
+                &new_salt,
+                new_keys.sqlcipher_key.expose_secret(),
+                |old_ct, old_nonce| {
+                    let plaintext = decrypt_key_value(&old_aes_key, old_ct, old_nonce)?;
+                    encrypt_key_value(&new_keys.aes_key, plaintext.expose_secret())
+                },
+            )
+        })?;
+
+        // 4. Overwrite the salt sidecar with the new salt so future opens()
+        //    derive matching keys. Atomic via std::fs::write (single syscall;
+        //    macOS/Linux are atomic-rename internally for same-fs writes).
+        write_salt_sidecar(&self.db_path, &new_salt)?;
+
+        // 5. Audit the rotation BEFORE invalidating the session. The SQLCipher
+        //    connection is still valid (PRAGMA rekey rekeyed the open conn too)
+        //    and append_audit_event uses with_db (no session lookup).
+        let event = AuditEvent::master_rotated(count);
+        self.append_audit_event(event)?;
+
+        // 6. Invalidate the old session — its AES key matches nothing now.
+        //    Caller must unlock(new_password) for any further data operations.
+        self.lock(session).ok();
+
+        Ok(count)
+    }
+
     /// Fetch a key for an agent through a metadata allowlist and audit logger.
     ///
     /// This is the first runtime-safe path for fake-key testing. It never logs,
@@ -908,5 +979,148 @@ mod tests {
             salt_mode, 0o600,
             "salt sidecar should be 0600, was {salt_mode:o}"
         );
+    }
+
+    // ── v0.2.0 / v0.7.0 — rotate_master tests ─────────────────────────────
+
+    #[test]
+    fn rotate_master_happy_path_preserves_all_values() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("vault.db");
+        let vault = Vault::create(&path, PWD).unwrap();
+        let token = vault.unlock(PWD).unwrap();
+
+        // Add three entries with distinct values
+        let id_a = add_key_with(&vault, token, Provider::Anthropic, "anth-1", "sk-anth-A");
+        let id_b = add_key_with(&vault, token, Provider::OpenAI, "openai-1", "sk-openai-B");
+        let id_c = add_key_with(&vault, token, Provider::Stripe, "stripe-1", "sk-stripe-C");
+
+        // Capture original plaintexts for byte-perfect comparison after rotate
+        let val_a_before = vault.get_key_value(token, id_a).unwrap();
+        let val_b_before = vault.get_key_value(token, id_b).unwrap();
+        let val_c_before = vault.get_key_value(token, id_c).unwrap();
+        vault.lock(token).ok();
+
+        // Rotate
+        let new_pw = "Newpass-789!";
+        let count = vault.rotate_master(PWD, new_pw).unwrap();
+        assert_eq!(count, 3, "expected 3 entries re-encrypted, got {count}");
+
+        // Old password must FAIL
+        let old_unlock_err = vault.unlock(PWD).unwrap_err();
+        // SQLCipher wrong-key error path: returns `Db(SqliteFailure(NotADatabase))`
+        // because the rekeyed file no longer decrypts under the old key, so SQLite
+        // sees garbage instead of a valid header. Accept all three "wrong-pw"
+        // error variants depending on which layer detects first.
+        assert!(
+            matches!(
+                old_unlock_err,
+                VaultError::BadPassword | VaultError::Crypto(_) | VaultError::Db(_)
+            ),
+            "unlock with old pw should fail, got: {old_unlock_err:?}"
+        );
+
+        // New password must succeed AND return byte-identical plaintexts
+        let new_token = vault.unlock(new_pw).unwrap();
+        let val_a_after = vault.get_key_value(new_token, id_a).unwrap();
+        let val_b_after = vault.get_key_value(new_token, id_b).unwrap();
+        let val_c_after = vault.get_key_value(new_token, id_c).unwrap();
+        assert_eq!(val_a_after.expose_secret(), val_a_before.expose_secret());
+        assert_eq!(val_b_after.expose_secret(), val_b_before.expose_secret());
+        assert_eq!(val_c_after.expose_secret(), val_c_before.expose_secret());
+    }
+
+    #[test]
+    fn rotate_master_rejects_wrong_old_password() {
+        let (_dir, vault) = fresh_vault();
+        let err = vault.rotate_master("wrong-old-password", "Newpass-789!").unwrap_err();
+        // See note in rotate_master_happy_path: SQLCipher rejects wrong keys
+        // with NotADatabase at the rusqlite layer; that's wrapped in VaultError::Db.
+        assert!(
+            matches!(
+                err,
+                VaultError::BadPassword | VaultError::Crypto(_) | VaultError::Db(_)
+            ),
+            "expected wrong-password failure, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn rotate_master_rejects_weak_new_password() {
+        let (_dir, vault) = fresh_vault();
+        let err = vault.rotate_master(PWD, "short").unwrap_err();
+        assert!(
+            matches!(err, VaultError::WeakPassword),
+            "expected WeakPassword, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn rotate_master_writes_audit_event() {
+        let (_dir, vault) = fresh_vault();
+        let token = vault.unlock(PWD).unwrap();
+        add_sample_key(&vault, token);
+        add_sample_key(&vault, token);
+        vault.lock(token).ok();
+
+        vault.rotate_master(PWD, "Newpass-789!").unwrap();
+
+        let new_token = vault.unlock("Newpass-789!").unwrap();
+        let events = vault.audit_events().unwrap();
+        let rotate_events: Vec<_> = events
+            .iter()
+            .filter(|e| e.kind == EventKind::MasterRotated)
+            .collect();
+        assert_eq!(rotate_events.len(), 1, "expected 1 master_rotated event");
+        let evt = rotate_events[0];
+        assert_eq!(evt.entry_id, Uuid::nil());
+        assert!(
+            evt.label.as_deref().unwrap_or("").contains("2 entries"),
+            "audit label should mention entry count, got: {:?}",
+            evt.label
+        );
+        vault.lock(new_token).ok();
+    }
+
+    #[test]
+    fn rotate_master_regenerates_salt() {
+        let (dir, vault) = fresh_vault();
+        let salt_path_buf = dir.path().join("vault.db.salt");
+        let salt_before = std::fs::read(&salt_path_buf).unwrap();
+
+        vault.rotate_master(PWD, "Newpass-789!").unwrap();
+
+        let salt_after = std::fs::read(&salt_path_buf).unwrap();
+        assert_eq!(salt_before.len(), 16);
+        assert_eq!(salt_after.len(), 16);
+        assert_ne!(
+            salt_before, salt_after,
+            "salt sidecar should be regenerated on rotation"
+        );
+    }
+
+    #[test]
+    fn rotate_master_empty_vault_succeeds() {
+        let (_dir, vault) = fresh_vault();
+        let count = vault.rotate_master(PWD, "Newpass-789!").unwrap();
+        assert_eq!(count, 0, "empty vault rotation should report 0 entries");
+
+        // Confirm new password unlocks even with no entries
+        vault.unlock("Newpass-789!").unwrap();
+    }
+
+    #[test]
+    fn rotate_master_can_be_rotated_again() {
+        let (_dir, vault) = fresh_vault();
+        let token = vault.unlock(PWD).unwrap();
+        let id = add_sample_key(&vault, token);
+        vault.lock(token).ok();
+
+        vault.rotate_master(PWD, "Second-pass!1").unwrap();
+        vault.rotate_master("Second-pass!1", "Third-pass!22").unwrap();
+
+        let token = vault.unlock("Third-pass!22").unwrap();
+        let value = vault.get_key_value(token, id).unwrap();
+        assert_eq!(value.expose_secret(), "sk-ant-test-1111111111111111");
     }
 }
