@@ -95,9 +95,114 @@ jobs:
             ${{ matrix.artifact }}.zip.sha256
           if-no-files-found: error
 
+  # v0.7.0: Build the Tauri desktop app (with the new rotate-master UI) for
+  # macOS + Linux + Windows. Each runner builds its native bundle:
+  #   - macos-14 (arm64) -> .dmg (Apple Silicon)
+  #   - macos-13 (x86_64) -> .dmg (Intel)
+  #   - ubuntu-22.04 -> .AppImage + .deb
+  #   - windows-2022 -> .msi installer + .exe NSIS installer
+  # Unsigned for v0.7.0 — adding Apple Developer ID + Windows code signing
+  # is a separate task (requires David's Apple Developer enrollment + cert
+  # provisioning). Users will see a Gatekeeper warning on first launch;
+  # they can clear with: xattr -d com.apple.quarantine /Applications/Holster.app
+  build-desktop:
+    name: Build Holster desktop (${{ matrix.platform.name }})
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { name: "macos-arm64", os: "macos-14", target: "aarch64-apple-darwin" }
+          - { name: "macos-x86_64", os: "macos-13", target: "x86_64-apple-darwin" }
+          - { name: "linux-x86_64", os: "ubuntu-22.04", target: "x86_64-unknown-linux-gnu" }
+          - { name: "windows-x86_64", os: "windows-2022", target: "x86_64-pc-windows-msvc" }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.target }}
+
+      - name: Install Linux Tauri dependencies
+        if: matrix.platform.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop/src-tauri/target
+          key: ${{ runner.os }}-${{ matrix.platform.target }}-desktop-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.platform.target }}-desktop-cargo-
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend deps
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Build Tauri desktop bundle
+        uses: tauri-apps/tauri-action@v0
+        with:
+          projectPath: apps/desktop
+          args: --target ${{ matrix.platform.target }}
+
+      - name: Collect bundle artifacts (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir -p dist
+          find apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle -type f \
+            \( -name "*.dmg" -o -name "*.app.tar.gz" \) -exec cp {} dist/ \;
+          ls -la dist/
+
+      - name: Collect bundle artifacts (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p dist
+          find apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle -type f \
+            \( -name "*.AppImage" -o -name "*.deb" \) -exec cp {} dist/ \;
+          ls -la dist/
+
+      - name: Collect bundle artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Get-ChildItem -Path "apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle" -Recurse -Include *.msi,*.exe |
+            Where-Object { $_.Name -notmatch "holster-desktop\.exe$" } |
+            Copy-Item -Destination dist
+          Get-ChildItem dist
+
+      - name: Upload desktop bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: holster-desktop-${{ matrix.platform.name }}
+          path: dist/*
+          if-no-files-found: warn
+
   release:
     name: Publish GitHub release
-    needs: build-cli
+    needs:
+      - build-cli
+      - build-desktop
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
     permissions:
@@ -112,6 +217,10 @@ jobs:
         with:
           path: artifacts
 
+      - name: Inventory artifacts (debug)
+        shell: bash
+        run: find artifacts -type f | sort
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -124,5 +233,9 @@ jobs:
             artifacts/holster-cli-linux-x86_64/holster-cli-linux-x86_64.tar.gz.sha256
             artifacts/holster-cli-windows-x86_64/holster-cli-windows-x86_64.zip
             artifacts/holster-cli-windows-x86_64/holster-cli-windows-x86_64.zip.sha256
+            artifacts/holster-desktop-macos-arm64/*
+            artifacts/holster-desktop-macos-x86_64/*
+            artifacts/holster-desktop-linux-x86_64/*
+            artifacts/holster-desktop-windows-x86_64/*
           draft: false
           generate_release_notes: true
