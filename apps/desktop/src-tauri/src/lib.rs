@@ -684,6 +684,63 @@ fn lock_vault(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+/// v0.7.0: Rotate the vault master password from the desktop UI.
+///
+/// Re-encrypts every entry under a new master + regenerates the salt
+/// atomically (single SQLite transaction inside the vault crate). On
+/// success, any active session is invalidated — the caller must
+/// `unlock_vault(new_password)` to do further work.
+///
+/// Returns the count of entries re-encrypted, so the UI can render
+/// "Rotated master for N entries" confirmation.
+///
+/// Wrong-old-password → BadPassword (or SQLCipher's NotADatabase wrapped
+/// in VaultError::Db, both surface as a clean error string for the UI).
+/// Weak-new-password (< 8 chars) → WeakPassword.
+#[tauri::command]
+fn rotate_master(
+    old_password: String,
+    new_password: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    if new_password.len() < 8 {
+        return Err("New master password must be at least 8 characters".into());
+    }
+    if old_password == new_password {
+        return Err("New master password must differ from the old one".into());
+    }
+
+    let path = resolved_vault_path(&app, &state)?;
+    if !path.exists() {
+        return Err(err_to_string(VaultError::VaultNotFound));
+    }
+
+    let mut vault_slot = state.vault.lock().map_err(|_| "state lock poisoned")?;
+    if vault_slot.is_none() {
+        let v = Vault::open(&path).map_err(err_to_string)?;
+        *vault_slot = Some(v);
+    }
+    let vault = vault_slot
+        .as_ref()
+        .ok_or_else(|| "vault handle missing after open".to_string())?;
+
+    let count = vault
+        .rotate_master(&old_password, &new_password)
+        .map_err(err_to_string)?;
+
+    // Plaintext passwords drop here.
+    drop(old_password);
+    drop(new_password);
+
+    // Rotation invalidates any held session — frontend must call
+    // unlock_vault(new_password) before any further data ops.
+    let mut session_slot = state.session.lock().map_err(|_| "state lock poisoned")?;
+    *session_slot = None;
+
+    Ok(count)
+}
+
 #[tauri::command]
 fn list_keys(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<KeyMetadataDto>, String> {
     let session = state.session.lock().map_err(|_| "state lock poisoned")?;
@@ -1678,6 +1735,7 @@ pub fn run() {
             create_vault,
             unlock_vault,
             lock_vault,
+            rotate_master,
             list_keys,
             add_key,
             delete_key,

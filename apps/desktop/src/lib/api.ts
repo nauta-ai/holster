@@ -126,6 +126,9 @@ async function mockInvoke<T>(command: string, args?: InvokeArgs): Promise<T> {
     case 'lock_vault':
     case 'delete_key':
       return undefined as T;
+    case 'rotate_master':
+      // Dev mock: pretend we rotated 3 entries.
+      return 3 as T;
     case 'list_keys':
       return keys as T;
     case 'add_key':
@@ -263,6 +266,18 @@ export async function unlockVault(password: string): Promise<void> {
 
 export async function lockVault(): Promise<void> {
   await invoke<void>('lock_vault');
+}
+
+/**
+ * v0.7.0: Rotate the vault master password. Re-encrypts every entry under
+ * the new master + regenerates the salt atomically. After success, the
+ * current session is invalidated — the caller must `unlockVault(newPassword)`
+ * before any further data operations.
+ *
+ * Returns the count of entries successfully re-encrypted (for UI confirmation).
+ */
+export async function rotateMaster(oldPassword: string, newPassword: string): Promise<number> {
+  return await invoke<number>('rotate_master', { oldPassword, newPassword });
 }
 
 export async function listKeys(): Promise<KeyMetadataDto[]> {

@@ -10,6 +10,7 @@
   import McpPreflightDialog from './McpPreflightDialog.svelte';
   import SecureKeysDialog from './SecureKeysDialog.svelte';
   import ProjectToolsDialog from './ProjectToolsDialog.svelte';
+  import RotateMasterDialog from './RotateMasterDialog.svelte';
 
   interface Props {
     onLocked: () => void;
@@ -31,6 +32,7 @@
   let showMcp = $state(false);
   let showSecureKeys = $state(false);
   let showProjectTools = $state(false);
+  let showRotateMaster = $state(false);
   let initialDoctorPath = $state('');
 
   async function refresh() {
@@ -167,6 +169,8 @@
       <div class="actions">
         <button onclick={() => openDoctor()} class="primary">Scan a project</button>
         <button onclick={refresh} class="ghost icon-button" title="Refresh" aria-label="Refresh">↻</button>
+        <!-- v0.7.0: master password rotation, finally in-app -->
+        <button onclick={() => (showRotateMaster = true)} class="ghost" title="Rotate master password">Rotate master</button>
         <button onclick={onLock} class="ghost">Lock</button>
       </div>
     </header>
@@ -300,6 +304,18 @@
     onExportProfile={() => {
       showProjectTools = false;
       showExport = true;
+    }}
+  />
+{/if}
+
+{#if showRotateMaster}
+  <RotateMasterDialog
+    onClose={() => (showRotateMaster = false)}
+    onRotated={() => {
+      // Rotation invalidates the session — escalate to the locked screen
+      // so the user re-enters with the NEW master password.
+      showRotateMaster = false;
+      onLocked();
     }}
   />
 {/if}
