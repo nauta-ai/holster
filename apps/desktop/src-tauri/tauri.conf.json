@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Holster",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "identifier": "com.nautaai.holster",
   "build": {
-    "beforeDevCommand": "pnpm --filter holster-desktop-ui dev",
-    "beforeBuildCommand": "pnpm --filter holster-desktop-ui build",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../build"
   },
