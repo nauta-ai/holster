@@ -107,6 +107,10 @@ jobs:
   # they can clear with: xattr -d com.apple.quarantine /Applications/Holster.app
   build-desktop:
     name: Build Holster desktop (${{ matrix.platform.name }})
+    # v0.7.0: desktop bundles paused per product decision — Dave is the only
+    # current desktop user, the CLI is the customer-facing surface. Re-enable
+    # by flipping this to `if: true` when desktop ships as a real product.
+    if: false
     runs-on: ${{ matrix.platform.os }}
     strategy:
       fail-fast: false
@@ -210,7 +214,9 @@ jobs:
     name: Publish GitHub release
     needs:
       - build-cli
-      - build-desktop
+    # v0.7.0: desktop bundles paused — CLI-only release. The build-desktop
+    # job still runs (so we know whether the Tauri pipeline is healthy)
+    # but doesn't gate the release publish.
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
     permissions:
@@ -241,9 +247,5 @@ jobs:
             artifacts/holster-cli-linux-x86_64/holster-cli-linux-x86_64.tar.gz.sha256
             artifacts/holster-cli-windows-x86_64/holster-cli-windows-x86_64.zip
             artifacts/holster-cli-windows-x86_64/holster-cli-windows-x86_64.zip.sha256
-            artifacts/holster-desktop-macos-arm64/*
-            artifacts/holster-desktop-macos-x86_64/*
-            artifacts/holster-desktop-linux-x86_64/*
-            artifacts/holster-desktop-windows-x86_64/*
           draft: false
           generate_release_notes: true
