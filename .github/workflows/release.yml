@@ -16,12 +16,11 @@ jobs:
           - os: macos-14
             target: aarch64-apple-darwin
             artifact: holster-cli-macos-arm64
-          # v0.7.0: added macOS Intel + Windows targets so the published
-          # release covers Mac (arm64 + x86_64), Linux x86_64, and
-          # Windows x86_64. Previous releases shipped macOS-arm64 + Linux only.
-          - os: macos-13
-            target: x86_64-apple-darwin
-            artifact: holster-cli-macos-x86_64
+          # v0.7.0 originally included macos-13 (x86_64-apple-darwin) but
+          # GitHub free-tier macos-13 runners had 78+ min queue with no
+          # assignment — dropped for this release. Apple-Silicon arm64 is
+          # the modern Mac default; Intel users can use the Linux binary
+          # in the meantime or wait for v0.7.1 to restore Intel.
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             artifact: holster-cli-linux-x86_64
@@ -241,8 +240,6 @@ jobs:
           files: |
             artifacts/holster-cli-macos-arm64/holster-cli-macos-arm64.tar.gz
             artifacts/holster-cli-macos-arm64/holster-cli-macos-arm64.tar.gz.sha256
-            artifacts/holster-cli-macos-x86_64/holster-cli-macos-x86_64.tar.gz
-            artifacts/holster-cli-macos-x86_64/holster-cli-macos-x86_64.tar.gz.sha256
             artifacts/holster-cli-linux-x86_64/holster-cli-linux-x86_64.tar.gz
             artifacts/holster-cli-linux-x86_64/holster-cli-linux-x86_64.tar.gz.sha256
             artifacts/holster-cli-windows-x86_64/holster-cli-windows-x86_64.zip
