@@ -5,11 +5,11 @@
   "type": "module",
   "description": "Holster desktop UI (SvelteKit, served by Tauri)",
   "scripts": {
-    "dev": "vite dev --port 1420 --strictPort",
-    "build": "vite build",
-    "preview": "vite preview --port 1420 --strictPort",
-    "check": "svelte-check --tsconfig ./tsconfig.json",
-    "tauri": "tauri"
+    "dev": "npx vite dev --port 1420 --strictPort",
+    "build": "npx vite build",
+    "preview": "npx vite preview --port 1420 --strictPort",
+    "check": "npx svelte-check --tsconfig ./tsconfig.json",
+    "tauri": "npx tauri"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.6",
