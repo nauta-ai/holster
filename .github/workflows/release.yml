@@ -157,15 +157,19 @@ jobs:
         working-directory: apps/desktop
         run: npm ci
 
-      # tauri-apps/tauri-action@v0 spawned `npm run tauri build` from a cwd
-      # that didn't have node_modules in scope on the first attempt — 4 builds
-      # failed with "'tauri' is not recognized." Switched to invoking the npm
-      # script directly from apps/desktop where `npm ci` ran. Same effective
-      # build (`tauri build --target <triple>` via the @tauri-apps/cli
-      # devDependency we already require).
+      # 3 previous attempts failed at "Build Tauri desktop bundle" with
+      # "'tauri' is not recognized" — npm's @tauri-apps/cli bin shim
+      # didn't resolve on Windows (and silently broke macOS/Linux too).
+      # Switching to cargo-installed tauri-cli so the binary is in $PATH
+      # via ~/.cargo/bin (which dtolnay/rust-toolchain adds). The
+      # @tauri-apps/cli devDependency stays for local `npm run tauri`
+      # convenience; CI uses the Rust binary.
+      - name: Install cargo-tauri CLI
+        run: cargo install tauri-cli --version "^2.0" --locked
+
       - name: Build Tauri desktop bundle
         working-directory: apps/desktop
-        run: npm run tauri build -- --target ${{ matrix.platform.target }}
+        run: cargo tauri build --target ${{ matrix.platform.target }}
 
       - name: Collect bundle artifacts (macOS)
         if: runner.os == 'macOS'
