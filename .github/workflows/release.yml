@@ -157,11 +157,15 @@ jobs:
         working-directory: apps/desktop
         run: npm ci
 
+      # tauri-apps/tauri-action@v0 spawned `npm run tauri build` from a cwd
+      # that didn't have node_modules in scope on the first attempt — 4 builds
+      # failed with "'tauri' is not recognized." Switched to invoking the npm
+      # script directly from apps/desktop where `npm ci` ran. Same effective
+      # build (`tauri build --target <triple>` via the @tauri-apps/cli
+      # devDependency we already require).
       - name: Build Tauri desktop bundle
-        uses: tauri-apps/tauri-action@v0
-        with:
-          projectPath: apps/desktop
-          args: --target ${{ matrix.platform.target }}
+        working-directory: apps/desktop
+        run: npm run tauri build -- --target ${{ matrix.platform.target }}
 
       - name: Collect bundle artifacts (macOS)
         if: runner.os == 'macOS'
